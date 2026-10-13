@@ -3,18 +3,14 @@ import Link from "next/link";
 export default function Home() {
   return (
     <main className="site">
-      <header className="header">
-        <Link href="/" className="logo" aria-label="steven.marketing home">steven.marketing</Link>
-      </header>
-      <section className="center" aria-labelledby="login-heading">
-        <div className="login-card">
-          <h1 id="login-heading">Client login</h1>
-          <p className="description">Your private client dashboard.</p>
-          <div className="notice" role="status">
-            <p>Secure login is coming soon.</p>
-            <span>Request access to get started.</span>
-          </div>
-          <a className="login-action" href="mailto:hello@steven.marketing?subject=Client%20portal%20access">Request access <span aria-hidden="true">↗</span></a>
+      <header className="header"><Link href="/" className="logo">steven.marketing</Link></header>
+      <section className="home-hero" aria-labelledby="hero-title">
+        <p className="eyebrow">Independent performance marketing</p>
+        <h1 id="hero-title">Built for<br /><em>better business.</em></h1>
+        <p className="home-description">Research-led marketing. Measurable growth. We earn our commission when we deliver agreed results.</p>
+        <div className="hero-actions">
+          <Link className="action action-primary" href="/signup">Sign up as a client <span aria-hidden="true">↗</span></Link>
+          <Link className="action action-secondary" href="/login">Client login <span aria-hidden="true">→</span></Link>
         </div>
       </section>
       <footer className="footer">© {new Date().getFullYear()} steven.marketing</footer>
