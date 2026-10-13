@@ -4,23 +4,30 @@ export default function Home() {
   return (
     <main className="site-shell">
       <header className="masthead">
-        <Link className="wordmark" href="/" aria-label="steven.marketing home">steven<span>.</span>marketing</Link>
-        <Link href="/login" className="header-link">Client login <span aria-hidden="true">↗</span></Link>
+        <Link href="/" className="wordmark">steven.marketing</Link>
+        <Link href="/login" className="nav-link">Client login <span aria-hidden="true">↗</span></Link>
       </header>
-      <section className="hero" aria-labelledby="headline">
-        <div className="eyebrow"><span className="status-dot" /> INDEPENDENT PERFORMANCE MARKETING</div>
-        <h1 id="headline">Built for<br /><em>better business.</em></h1>
-        <p className="intro">We study your business, find the opportunities, execute the campaigns and measure what matters. Our compensation is tied to agreed results.</p>
-        <div className="hero-actions">
-          <a className="primary" href="mailto:hello@steven.marketing?subject=Let's%20talk%20business">Let&apos;s talk business <span aria-hidden="true">↗</span></a>
-          <Link className="quiet-link" href="/login">Already a client? Sign in <span aria-hidden="true">→</span></Link>
+
+      <section className="hero" aria-labelledby="hero-title">
+        <p className="eyebrow">Independent performance marketing</p>
+        <h1 id="hero-title">Growth, measured.</h1>
+        <p className="intro">We research, execute and optimise marketing that grows your business. Our commission is tied to agreed results.</p>
+        <a className="button button-dark" href="mailto:hello@steven.marketing?subject=Let%27s%20talk%20business">Let's talk business <span aria-hidden="true">↗</span></a>
+      </section>
+
+      <section className="client-section" aria-labelledby="client-title">
+        <div>
+          <p className="eyebrow">For clients</p>
+          <h2 id="client-title">Your numbers. In one place.</h2>
+          <p>Sales, advertising spend, commissions and invoices — a clear view of your business performance. Private dashboard access is coming soon.</p>
         </div>
+        <Link href="/login" className="button button-outline">Client login <span aria-hidden="true">→</span></Link>
       </section>
-      <section className="portal-panel" aria-label="Client portal">
-        <div><p className="section-label">CLIENT PORTAL</p><h2>Everything in one place.</h2><p>A single view of sales, advertising spend, performance, commission and invoices. Your private dashboard is on the way.</p></div>
-        <Link href="/login" className="portal-link">Client login <span aria-hidden="true">↗</span></Link>
-      </section>
-      <footer><span>© {new Date().getFullYear()} steven.marketing</span><a href="mailto:hello@steven.marketing">Get in touch ↗</a></footer>
+
+      <footer>
+        <span>© {new Date().getFullYear()} steven.marketing</span>
+        <a href="mailto:hello@steven.marketing">Contact</a>
+      </footer>
     </main>
   );
 }
