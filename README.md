@@ -15,7 +15,13 @@ A lightweight public website and invite-only private client dashboard built on N
 
 ## Required activation (no database was assigned automatically)
 
-**Use a NEW dedicated Supabase project for this client portal. Do not reuse the existing unrelated '458' project without explicit approval.**
+**Supabase project selected:** `Steven-marketing` (`txzaubnzumdcnshocjzz`). Database schema was applied and RLS permissions verified on 14 October 2026. Keep the unrelated `458` project separate.
+
+**Vercel activation:** Set `NEXT_PUBLIC_SUPABASE_URL` to `https://txzaubnzumdcnshocjzz.supabase.co` and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` to the new project's publishable key for all desired environments. Deploy after saving variables: Next.js embeds `NEXT_PUBLIC_` values in the frontend at build time.
+
+**Authentication activation:** In Supabase Authentication → Providers → Email, disable public user sign-ups. Set Site URL to `https://steven.marketing` and allow `https://steven.marketing/auth/callback` for recovery and invitation redirects. Invite users with Supabase Auth's admin UI. No test accounts or credentials are committed here.
+
+**First client:** Assign authenticated users a `client_memberships` entry via a secure admin workflow. Without a membership, the app intentionally shows an unassigned workspace. Do not populate sales/ads or commissions until validated against each agreement.
 
 1. Create a Supabase project in the appropriate organisation and Australian region. Apply `supabase/schema.sql` with its SQL Editor.
 2. In Supabase Authentication, disable public email self-registration. Use the Auth dashboard/admin-only invitations to create client accounts. Configure email provider, login rate limits and allowed redirect URLs (production: `https://steven.marketing/auth/callback` and `https://steven.marketing/reset-password`; include preview/local URLs only for trusted environments).
