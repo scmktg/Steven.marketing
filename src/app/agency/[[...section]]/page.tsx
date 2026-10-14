@@ -194,13 +194,13 @@ export default async function AgencyPage({params,searchParams}:{
     const active=histories.get(client.id)?.[0];
     return active?[{client,contract:termsForClient,period:active}]:[];
   });
-  const allCovered=contracted.length>0&&contracted.every(c=>c.period.coverageComplete);
+  const allCovered=contracted.length>0&&contracted.length===filteredClients.length&&contracted.every(c=>c.period.coverageComplete);
   type PeriodMetric="revenue"|"netRevenue"|"totalRevenue"|"grossRevenue"|"shipping"|"growth"|"commission"|"orders";
   const summedContract=(metric:PeriodMetric):number|null=>{
     if(!allCovered||contracted.some(c=>c.period[metric]===null))return null;
     return Math.round(contracted.reduce((sum,c)=>sum+Number(c.period[metric]),0)*100)/100;
   };
-  const completeAds=contracted.length>0&&contracted.every(c=>adPeriods.get(c.client.id)?.coverageComplete);
+  const completeAds=contracted.length>0&&contracted.length===filteredClients.length&&contracted.every(c=>adPeriods.get(c.client.id)?.coverageComplete);
   const summedContractAds=completeAds?Math.round(contracted.reduce((sum,c)=>sum+Number(adPeriods.get(c.client.id)?.amount??0),0)*100)/100:null;
   const completeRemaining=contracted.length>0&&contracted.every(c=>remaining.get(c.client.id)!==null&&remaining.get(c.client.id)!==undefined);
   const summedRemaining=completeRemaining?Math.round(contracted.reduce((sum,c)=>sum+Number(remaining.get(c.client.id)),0)*100)/100:null;
@@ -397,24 +397,98 @@ export default async function AgencyPage({params,searchParams}:{
           </Panel>}
         </>}
         {sectionKey==="sales"&&<>
-          <div className="kpi-grid three"><Stat featured label="Net sales this month" value={aud(netTotal)}/><Stat label="Reporting clients" value={whole(salesKnown.length)}/><Stat label="Total orders" value={month.some(m=>m.orders!==null)?whole(month.reduce((sum,m)=>sum+Number(m.orders||0),0)):"—"}/></div>
-          <Panel eyebrow="REVENUE" title="Monthly sales reporting">{relevantMetrics.some(m=>m.net_sales_aud!==null)?<Table titles={["Client","Month","Gross sales","Net sales","Orders","Last synced"]} rows={relevantMetrics.filter(m=>m.net_sales_aud!==null).map(m=>[lookup(m.client_id),monthName(m.month),aud(m.gross_sales_aud),aud(m.net_sales_aud),whole(m.orders),shortDate(m.shopify_synced_at)])}/>:<Empty title="No connected sales data" description="Shopify sales will appear once each client’s integration is authorised and running."/>}</Panel>
+          <div className="agency-overview-period">
+            <div><span className="panel-kicker">CLIENT CONTRACT PERIODS</span>
+              <h2>{selected?lookup(selected):"All clients · current reporting periods"}</h2>
+              <p>Each client's reporting runs from their own commencement-date anniversary. Current periods are shown through {shortDate(today)}, not necessarily through their end dates.</p>
+            </div>
+            <Link className="panel-link" href={path("commissions",selected)}>Commission calculations →</Link>
+          </div>
+          <div className="kpi-grid agency-kpi-grid">
+            <Stat featured label="Net product sales · contract periods" value={aud(summedContract("netRevenue"))} note="After discounts & refunds · excludes customer shipping"/>
+            <Stat label="Shopify total sales · contract periods" value={aud(summedContract("totalRevenue"))} note="Includes customer shipping and reported tax"/>
+            <Stat label="Orders · contract periods" value={whole(summedContract("orders"))} note="Order counts on the same client anniversary dates"/>
+            <Stat label="Shipping charged to customers" value={aud(summedContract("shipping"))} note="Shipping revenue, not the cost of couriers"/>
+          </div>
+          {!allCovered&&filteredClients.length>0&&
+            <p className="agency-report-warning">Some clients have no configured contract or complete daily sales records. Totals are withheld rather than undercounted. Individual available fields are shown below.</p>}
+          <Panel eyebrow="CURRENT CONTRACT PERIOD" title="Sales by client">
+            {filteredClients.length?<Table titles={["Client","Contract dates","Shopify total sales","Net product sales","Gross sales","Shipping","Orders","Reporting"]} rows={
+              filteredClients.map(c=>{
+                const p=histories.get(c.id)?.[0];
+                return [
+                  <Link key={c.id} className="table-link" href={path("sales",c.id)}>{c.name} ↗</Link>,
+                  p?shortDate(p.start)+" – "+shortDate(p.end):"Contract not configured",
+                  aud(p?.totalRevenue),aud(p?.netRevenue),aud(p?.grossRevenue),aud(p?.shipping),whole(p?.orders),
+                  p?(p.recordedDays+" / "+p.expectedDays+" days"+(p.coverageComplete?" · complete":" · incomplete")):"No contract dates"
+                ];
+              })
+            }/>:<Empty title="No clients" description="Create a client and set their commencement date under Commissions."/>}
+            <p className="panel-footnote">Shopify daily sales are grouped by the exact contract anniversaries used for commission calculations. Current figures cover the reporting period only through {shortDate(today)}. Any missing daily records prevent unverified totals from appearing.</p>
+          </Panel>
+          <Panel eyebrow="CONTRACT-ALIGNED HISTORY" title="Sales by reporting period">
+            {filteredClients.some(c=>(histories.get(c.id)?.length??0)>0)?
+              <Table titles={["Client","Reporting period","Total sales","Net sales","Gross","Shipping","Orders","Coverage"]} rows={
+                filteredClients.flatMap(c=>(histories.get(c.id)??[]).map(p=>[
+                  lookup(c.id),shortDate(p.start)+" – "+shortDate(p.end),
+                  aud(p.totalRevenue),aud(p.netRevenue),aud(p.grossRevenue),aud(p.shipping),whole(p.orders),
+                  p.recordedDays+"/"+p.expectedDays+(p.isCurrent?" · ongoing":p.coverageComplete?" · complete":" · missing days")
+                ]))
+              }/>:<Empty title="No contract-period history" description="Add a commencement date to see anniversary-based sales reporting."/>}
+            <p className="panel-footnote">Historical periods use the same dates as Commissions; this report does not substitute calendar-month totals when a contract period crosses two months. Incomplete historical periods remain marked as such.</p>
+          </Panel>
         </>}
         {sectionKey==="advertising"&&<>
-          <div className="kpi-grid three">
-            <Stat featured label="Google Ads · calendar-month snapshot" value={aud(spendTotal)} note="Reporting snapshot; not a live spend control"/>
-            <Stat label="Clients with approved limits" value={whole(filteredClients.filter(c=>budgetFor(c.id)?.approved_monthly_limit_aud!==null&&budgetFor(c.id)?.approved_monthly_limit_aud!==undefined).length)}/>
-            <Stat label="Awaiting client approval" value={whole(filteredClients.filter(c=>Boolean(pendingBudget(c.id))).length)}/>
+          <div className="agency-overview-period">
+            <div><span className="panel-kicker">CLIENT CONTRACT PERIODS</span>
+              <h2>{selected?lookup(selected):"All clients · current advertising periods"}</h2>
+              <p>Google Ads spend is grouped by each client's own contract anniversaries through {shortDate(today)}, matching the commission report.</p>
+            </div>
+            <Link className="panel-link" href={path("sales",selected)}>Compare sales →</Link>
           </div>
+          <div className="kpi-grid agency-kpi-grid">
+            <Stat featured label="Google Ads spend · contract periods" value={aud(summedContractAds)} note="Same dates as Commissions · daily Google Ads records"/>
+            <Stat label="Advertising clients reporting" value={whole(contracted.filter(c=>adPeriods.get(c.client.id)?.coverageComplete).length)} note="Contract periods with complete daily ad records"/>
+            <Stat label="Clients with approved limits" value={whole(filteredClients.filter(c=>budgetFor(c.id)?.approved_monthly_limit_aud!==null&&budgetFor(c.id)?.approved_monthly_limit_aud!==undefined).length)} note="Limits remain calendar-month authorisations"/>
+            <Stat label="Awaiting budget approval" value={whole(filteredClients.filter(c=>Boolean(pendingBudget(c.id))).length)} note="Proposed limits do not change actual campaign spending"/>
+          </div>
+          {!completeAds&&filteredClients.length>0&&<p className="agency-report-warning">Advertising totals require complete daily data and a configured contract for every selected client. Missing dates are not treated as $0.</p>}
+          <Panel eyebrow="CURRENT CONTRACT PERIOD" title="Google Ads investment by client">
+            {filteredClients.length?<Table titles={["Client","Contract dates","Spend","Daily records","Status"]} rows={
+              filteredClients.map(c=>{
+                const p=histories.get(c.id)?.[0],ads=adPeriods.get(c.id);
+                return [
+                  <Link key={c.id} href={path("advertising",c.id)} className="table-link">{c.name} ↗</Link>,
+                  p?shortDate(p.start)+" – "+shortDate(p.end):"Contract not configured",
+                  aud(ads?.amount),
+                  ads?ads.recordedDays+" / "+ads.expectedDays:"—",
+                  ads?(ads.coverageComplete?"Complete through "+shortDate(p?.asOf):"Missing daily records"):"Add contract dates"
+                ];
+              })
+            }/>:<Empty title="No clients" description="Configure a client and contract start date to report advertising spend."/>}
+            <p className="panel-footnote">This report uses account-local daily Google Ads spend. The dates match commission and sales periods; it is not a Google Ads attribution or ROAS calculation.</p>
+          </Panel>
+          <Panel eyebrow="CONTRACT-ALIGNED HISTORY" title="Google Ads spend by reporting period">
+            {filteredClients.some(c=>(histories.get(c.id)?.length??0)>0)?
+              <Table titles={["Client","Contract period","Google Ads spend","Coverage","Status"]} rows={
+                filteredClients.flatMap(c=>(histories.get(c.id)??[]).map(p=>{
+                  const a=adSpendForPeriod(p,dailyAds.filter(x=>x.client_id===c.id));
+                  return [lookup(c.id),shortDate(p.start)+" – "+shortDate(p.end),
+                    aud(a.amount),a.recordedDays+" / "+a.expectedDays,
+                    a.coverageComplete?(p.isCurrent?"Current · through "+shortDate(p.asOf):"Complete"):"Missing daily records"];
+                }))
+              }/>:<Empty title="No contract-period advertising history" description="Configure a commencement date to report Google Ads spend by agreement."/>}
+            <p className="panel-footnote">Google Ads historical periods are grouped using the same contract dates as sales and commission, not calendar months. Incomplete daily data remains unavailable.</p>
+          </Panel>
           {filteredClients.map(c=>{
             const budget=budgetFor(c.id),pending=pendingBudget(c.id),spend=monthSpend(c.id);
             const approved=budget?.approved_monthly_limit_aud??null;
-            return <Panel key={c.id} eyebrow="ADVERTISING INVESTMENT" title={c.name}
+            return <Panel key={c.id} eyebrow="CALENDAR-MONTH BUDGET AUTHORITY" title={c.name}
               aside={<Link className="panel-link" href={path("advertising",c.id)}>Client budget →</Link>}>
               <div className="agency-budget-summary">
                 <div><span>Approved monthly limit</span><strong>{aud(approved)}</strong></div>
                 <div><span>Initial testing plan</span><strong>{aud(budget?.initial_testing_budget_aud)}</strong></div>
-                <div><span>Recorded spend this month</span><strong>{aud(spend?.amount)}</strong></div>
+                <div><span>Recorded spend this calendar month</span><strong>{spend?.complete?aud(spend.amount):"—"}</strong></div>
                 <div><span>Stage</span><strong>{budget?.phase??"Not configured"}</strong></div>
               </div>
               <p className="agency-caption">Calendar-month spending authority · {spend?("Google Ads snapshot through "+shortDate(spend.through)+(spend.complete?" · recorded each day":" · incomplete days")):"No daily Google Ads spending recorded"}. Advertising is not automatically paused or scaled by this dashboard.</p>
@@ -464,13 +538,7 @@ export default async function AgencyPage({params,searchParams}:{
             </Panel>;
           })}
           {filteredClients.length===0&&<Empty title="No clients yet" description="Create a client, then agree their initial testing budget."/>}
-          <Panel eyebrow="ACTUAL SPEND" title="Google Ads reporting">
-            {relevantMetrics.some(m=>m.ad_spend_aud!==null)?
-              <Table titles={["Client","Month","Ad spend (snapshot)","Last updated"]} rows={relevantMetrics.filter(m=>m.ad_spend_aud!==null).map(m=>[
-                lookup(m.client_id),monthName(m.month),aud(m.ad_spend_aud),shortDate(m.ads_synced_at)
-              ])}/>:<Empty title="No advertising data yet" description="Authorise a Google Ads reporting integration before reporting spending."/>}
-            <p className="panel-footnote">Approved budgets are calendar-month permissions, not money already spent. Google Ads spending records may lag. Steven remains responsible for adjusting campaign budgets within the approved limit; this screen does not change live campaigns.</p>
-          </Panel>
+          <p className="panel-footnote">Approved advertising limits still apply to calendar months, independently of contract-anniversary reporting. These dashboard approvals do not automatically update Google Ads; actual spending data may lag.</p>
         </>}
         {sectionKey==="commissions"&&<>
           <div className="kpi-grid three">
