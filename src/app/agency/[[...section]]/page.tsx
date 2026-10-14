@@ -460,8 +460,8 @@ export default async function AgencyPage({params,searchParams}:{
         </>}
         {sectionKey==="agreements"&&<>
           <div className="agency-legal-warning">
-            <strong>DRAFT — INDEPENDENT LEGAL REVIEW REQUIRED</strong>
-            <p>These are editable proposals only. Nothing on this page sends a SignWell request, grants dashboard access or modifies a signed agreement. All commercial and termination clauses require Australian legal review before use.</p>
+            <strong>AGREEMENT TEMPLATE · NOT SENT</strong>
+            <p>Edit your standard agreement or tailor it for a client. Nothing here sends a SignWell request, grants dashboard access or changes a signed agreement.</p>
           </div>
           <Panel eyebrow="MASTER TEMPLATE" title={agreementMaster?.title||"Marketing Partnership Agreement"}>
             {agreementMaster?<>
@@ -470,7 +470,7 @@ export default async function AgencyPage({params,searchParams}:{
                 <input type="hidden" name="expected_version" value={agreementMaster.version}/>
                 <label htmlFor="agency-master-agreement"><strong>Master agreement clauses</strong><span>Markdown, including clearly marked placeholders and Schedules A–C</span></label>
                 <textarea id="agency-master-agreement" name="body_markdown" defaultValue={agreementMaster.body_markdown} rows={20} spellCheck/>
-                <button className="login-action agency-save" type="submit">Save master draft →</button>
+                <button className="login-action agency-save" type="submit">Save master template →</button>
               </form>
               <details className="agency-agreement-preview-toggle"><summary>Preview master agreement</summary><AgreementPreview body={agreementMaster.body_markdown}/></details>
             </>:<Empty title="Master agreement unavailable" description="Check the agreement-template database and authorisation."/>}
