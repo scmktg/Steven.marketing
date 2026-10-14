@@ -26,8 +26,10 @@ export async function createAgencyClient(data: FormData) {
   const name = clean(data,"name");
   const slug = clean(data,"slug").toLowerCase();
   if (!name || name.length > 120 || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) || slug.length > 80) finish("clients",false);
-  const { error } = await supabase.from("clients").insert({ name, slug });
-  finish("clients",!error);
+  const {data:created,error}=await supabase.from("clients").insert({name,slug}).select("id").single();
+  if(error||!created)finish("clients",false);
+  revalidatePath("/agency","layout");
+  redirect("/agency/advertising?client="+encodeURIComponent(created.id)+"&success=1");
 }
 
 export async function saveAgencyTerms(data: FormData) {
