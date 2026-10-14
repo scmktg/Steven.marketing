@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireAgencyAdmin } from "@/lib/agency-auth";
+import { validDate } from "@/lib/commission";
 
 const clean = (data: FormData, key: string) => String(data.get(key) ?? "").trim();
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -31,21 +32,49 @@ export async function createAgencyClient(data: FormData) {
 
 export async function saveAgencyTerms(data: FormData) {
   const { supabase } = await requireAgencyAdmin();
-  const clientId = clean(data,"client_id");
-  if (!await allowedClient(supabase,clientId)) finish("clients",false);
+  const clientId = clean(data, "client_id");
+  if (!await allowedClient(supabase, clientId)) finish("clients", false);
   const model = clean(data,"commission_model");
-  if (model !== "revenue_growth" && model !== "manual") finish("commissions",false,clientId);
-  const baselineInput = clean(data,"baseline_aud");
-  const rateInput = clean(data,"commission_percentage");
-  const baseline = baselineInput === "" ? null : Number(baselineInput);
-  const percent = rateInput === "" ? null : Number(rateInput);
-  if (baseline !== null && (!Number.isFinite(baseline) || baseline < 0 || baseline > 1e12)) finish("commissions",false,clientId);
-  if (percent !== null && (!Number.isFinite(percent) || percent < 0 || percent > 100)) finish("commissions",false,clientId);
-  if (model === "revenue_growth" && (baseline === null || percent === null)) finish("commissions",false,clientId);
+  if (!["tiered_revenue_growth","revenue_growth","manual"].includes(model)) finish("commissions",false,clientId);
+
+  const start = clean(data,"contract_start_date");
+  if(start && (!validDate(start) || start > new Date(Date.now()+86400000).toISOString().slice(0,10)))
+    finish("commissions",false,clientId);
+  const number = (name:string,allowBlank=true): number | null => {
+    const value=clean(data,name);
+    if(!value && allowBlank)return null;
+    if(!/^\d+(?:\.\d{1,3})?$/.test(value))return NaN;
+    return Number(value);
+  };
+  const baseline = number("baseline_aud");
+  const flatPercent=number("commission_percentage");
+  const firstCap=number("tier_1_cap_aud");
+  const secondCap=number("tier_2_cap_aud");
+  const rate1=number("tier_1_percentage");
+  const rate2=number("tier_2_percentage");
+  const rate3=number("tier_3_percentage");
+  const validAmount=(value:number|null,max=1e12)=>value===null||(Number.isFinite(value)&&value>=0&&value<=max);
+  if(!validAmount(baseline)||!validAmount(flatPercent,100)||!validAmount(firstCap)||
+     !validAmount(secondCap)||![rate1,rate2,rate3].every(v=>validAmount(v,100)))
+    finish("commissions",false,clientId);
+  if(model!=="manual"&&(!start||baseline===null)) finish("commissions",false,clientId);
+  if(model==="revenue_growth"&&flatPercent===null) finish("commissions",false,clientId);
+  if(model==="tiered_revenue_growth"&&(
+    firstCap===null||firstCap<=0||secondCap===null||secondCap<=firstCap||
+    rate1===null||rate2===null||rate3===null
+  ))finish("commissions",false,clientId);
+
   const { error } = await supabase.from("client_terms").upsert({
-    client_id: clientId, commission_model: model,
+    client_id: clientId,
+    commission_model: model,
+    contract_start_date: start || null,
     baseline_monthly_aud: baseline,
-    commission_rate: percent === null ? null : percent / 100,
+    commission_rate: flatPercent===null ? null : flatPercent/100,
+    tier_1_limit_aud: firstCap,
+    tier_2_limit_aud: secondCap,
+    tier_1_rate: rate1===null?null:rate1/100,
+    tier_2_rate: rate2===null?null:rate2/100,
+    tier_3_rate: rate3===null?null:rate3/100,
     updated_at: new Date().toISOString()
   }, { onConflict:"client_id" });
   finish("commissions",!error,clientId);
