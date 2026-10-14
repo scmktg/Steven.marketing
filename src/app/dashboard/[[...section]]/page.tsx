@@ -5,6 +5,7 @@ import { SignOut } from "@/components/sign-out";
 import { portalConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 import { contractHistory, sydneyToday, type AgreementTerms, type DailySales } from "@/lib/commission";
+import {decideAdvertisingBudget} from "../actions";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Client dashboard | steven.marketing", robots: { index: false, follow: false } };
@@ -19,6 +20,9 @@ type Month = {
 };
 type Terms = AgreementTerms;
 type Invoice = { id: string; number: string; issued_on: string | null; due_on: string | null; amount_aud: number; status: string; hosted_invoice_url: string | null };
+type AdvertisingSettings = {initial_testing_budget_aud:number;approved_monthly_limit_aud:number|null;objectives:string;phase:"testing"|"optimising"|"scaling"};
+type AdvertisingRequest = {id:string;proposed_monthly_limit_aud:number;previous_monthly_limit_aud:number|null;reason:string;status:string;created_at:string;decided_at:string|null};
+type AdvertisingDay = {day:string;ads_account_id:string;ad_spend_aud:number};
 const nav: { id: Area; title: string; symbol: string }[] = [
   { id: "overview", title: "Overview", symbol: "◫" },
   { id: "sales", title: "Sales", symbol: "↗" },
@@ -33,7 +37,7 @@ const monthLabel = (date: string) => new Intl.DateTimeFormat("en-AU", { month: "
 const dateLabel = (date: string | null) => date ? new Intl.DateTimeFormat("en-AU", {day:"numeric",month:"short",year:"numeric",timeZone:"UTC"}).format(new Date(date + "T12:00:00Z")) : "—";
 const pct = (n: number | null | undefined) => n === null || n === undefined ? "—" : `${(n * 100).toFixed(1)}%`;
 function href(area: Area, slug: string) { return `/dashboard${area === "overview" ? "" : "/" + area}?client=${encodeURIComponent(slug)}`; }
-function currentMonth() { const d = new Date(); return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}-01`; }
+function currentMonth() { return sydneyToday().slice(0,7)+"-01"; }
 function Metric({ label, value, detail, accent = false }: {label:string;value:string;detail?:string;accent?:boolean}) {
   return <article className={`kpi${accent ? " kpi-accent" : ""}`}><span className="kpi-label">{label}</span><strong className="kpi-value">{value}</strong><span className="kpi-detail">{detail || "Not connected"}</span></article>;
 }
@@ -60,7 +64,7 @@ function BarChart({ records, baseline }: {records:Month[];baseline:number|null})
 
 export default async function Dashboard({ params, searchParams }: {
   params: Promise<{ section?: string[] }>;
-  searchParams: Promise<{ client?: string }>;
+  searchParams: Promise<{ client?: string;error?:string;success?:string }>;
 }) {
   const { section } = await params;
   const area = section?.[0] ?? "overview";
@@ -89,10 +93,13 @@ export default async function Dashboard({ params, searchParams }: {
   let terms: Terms | null = null;
   let invoices: Invoice[] = [];
   let dailySales: DailySales[] = [];
+  let advertising: AdvertisingSettings|null=null;
+  let budgetRequests:AdvertisingRequest[]=[];
+  let dailyAdSpend:AdvertisingDay[]=[];
   let fetchFailed = Boolean(memberError);
 
   if (client) {
-    const [metricsResult, termsResult, invoicesResult, dailyResult] = await Promise.all([
+    const [metricsResult, termsResult, invoicesResult, dailyResult, adSettingsResult, adRequestsResult, adDailyResult] = await Promise.all([
       supabase.from("client_monthly_metrics").select("month,gross_sales_aud,net_sales_aud,orders,ad_spend_aud,shopify_synced_at,ads_synced_at")
         .eq("client_id", client.id).order("month", {ascending:false}).limit(12),
       supabase.from("client_terms").select("commission_model,contract_start_date,revenue_basis,baseline_monthly_aud,commission_rate,tier_1_limit_aud,tier_2_limit_aud,tier_1_rate,tier_2_rate,tier_3_rate")
@@ -100,13 +107,22 @@ export default async function Dashboard({ params, searchParams }: {
       supabase.from("client_invoices").select("id,number,issued_on,due_on,amount_aud,status,hosted_invoice_url")
         .eq("client_id", client.id).order("issued_on", {ascending:false, nullsFirst:false}).limit(30),
       supabase.from("client_daily_sales").select("day,net_sales_aud,gross_sales_aud,total_sales_aud,shipping_charges_aud,orders")
-        .eq("client_id",client.id).gte("day",new Date(Date.now()-270*86400000).toISOString().slice(0,10)).order("day",{ascending:false}).limit(1000)
+        .eq("client_id",client.id).gte("day",new Date(Date.now()-270*86400000).toISOString().slice(0,10)).order("day",{ascending:false}).limit(1000),
+      supabase.from("client_ad_budget_settings").select("initial_testing_budget_aud,approved_monthly_limit_aud,objectives,phase")
+        .eq("client_id",client.id).maybeSingle(),
+      supabase.from("client_ad_budget_requests").select("id,proposed_monthly_limit_aud,previous_monthly_limit_aud,reason,status,created_at,decided_at")
+        .eq("client_id",client.id).order("created_at",{ascending:false}).limit(50),
+      supabase.from("client_daily_ad_spend").select("day,ads_account_id,ad_spend_aud")
+        .eq("client_id",client.id).gte("day",currentMonth()).lte("day",sydneyToday()).limit(500)
     ]);
-    fetchFailed = fetchFailed || Boolean(metricsResult.error || termsResult.error || invoicesResult.error || dailyResult.error);
+    fetchFailed = fetchFailed || Boolean(metricsResult.error || termsResult.error || invoicesResult.error || dailyResult.error || adSettingsResult.error || adRequestsResult.error || adDailyResult.error);
     months = (metricsResult.data ?? []) as Month[];
     terms = (termsResult.data ?? null) as Terms | null;
     invoices = (invoicesResult.data ?? []) as Invoice[];
     dailySales = (dailyResult.data ?? []) as DailySales[];
+    advertising=(adSettingsResult.data??null) as AdvertisingSettings|null;
+    budgetRequests=(adRequestsResult.data??[]) as AdvertisingRequest[];
+    dailyAdSpend=(adDailyResult.data??[]) as AdvertisingDay[];
   }
 
   const thisMonth = months.find(row=>row.month===currentMonth()) || null;
@@ -122,6 +138,15 @@ export default async function Dashboard({ params, searchParams }: {
   const periodName=currentPeriod?[dateLabel(currentPeriod.start),dateLabel(currentPeriod.end)].join(" – "):"Contract dates not configured";
   const modelName=tiered?"Tiered revenue growth":hasGrowthModel?"Revenue growth":"Manually reconciled";
   const chosenArea = area as Area;
+  const pendingBudget=budgetRequests.find(r=>r.status==="pending");
+  const hasSpendDays=dailyAdSpend.length>0;
+  const spentThisMonth=hasSpendDays?
+    Math.round(dailyAdSpend.reduce((sum,row)=>sum+Math.round(Number(row.ad_spend_aud)*10000),0)/100)/100:null;
+  const spendDays=new Set(dailyAdSpend.map(r=>r.day)).size;
+  const spendSnapshotComplete=hasSpendDays&&spendDays===Number(sydneyToday().slice(8,10));
+  const latestSpendDay=dailyAdSpend.map(r=>r.day).sort().at(-1)||null;
+  const approvedLimit=advertising?.approved_monthly_limit_aud??null;
+  const remainingBudget=approvedLimit!==null&&spentThisMonth!==null?Math.round((approvedLimit-spentThisMonth)*100)/100:null;
 
   return <div className="portal-shell">
     <aside className="portal-sidebar">
@@ -146,6 +171,8 @@ export default async function Dashboard({ params, searchParams }: {
         </div>{memberships.length > 1 && <div className="client-switch"><span>Workspace</span><div className="client-links">{memberships.map(item=><Link key={item.id} className={item.id===client?.id?"selected":""} href={href(chosenArea,item.slug)}>{item.name}</Link>)}</div></div>}</div>
 
         {fetchFailed && <div className="dashboard-alert" role="alert">The dashboard could not load all data. Please try again or contact support.</div>}
+        {query.success==="1"&&<div className="agency-notification" role="status">Your advertising budget decision has been recorded.</div>}
+        {query.error==="1"&&<div className="dashboard-alert" role="alert">Unable to record that decision. It may already have been decided, or your account may not have approval permissions.</div>}
         {!client ? <Empty title="Your dashboard is almost ready" detail="Your account is signed in, but it has not been assigned to a client workspace. Please contact steven.marketing to enable access." /> :
         chosenArea === "overview" ? <>
           <section className="kpi-grid" aria-label="Current month key metrics">
@@ -172,6 +199,17 @@ export default async function Dashboard({ params, searchParams }: {
               <p className="panel-footnote">Figures are provisional. Invoices and your signed agreement determine amounts payable.</p>
             </section>
           </div>
+          <section className="panel">
+            <div className="panel-heading"><div><span className="panel-kicker">ADVERTISING BUDGET</span><h2>Monthly spending approval</h2></div>
+              <Link href={href("advertising",client.slug)} className="panel-link">View budget →</Link>
+            </div>
+            <div className="agency-budget-summary">
+              <div><span>Approved monthly limit</span><strong>{money(approvedLimit)}</strong></div>
+              <div><span>Recorded Google Ads spend</span><strong>{money(spentThisMonth)}</strong></div>
+              <div><span>Pending change</span><strong>{pendingBudget?money(pendingBudget.proposed_monthly_limit_aud):"None"}</strong></div>
+            </div>
+            <p className="panel-footnote">Calendar-month approval and recorded spending are separate from your commission reporting periods. {spendSnapshotComplete?"Daily spending records cover the month so far.":"Spend data may be incomplete or delayed."} Nothing automatically changes your Google Ads budget.</p>
+          </section>
           <section className="panel"><div className="panel-heading"><div><span className="panel-kicker">ACCOUNT</span><h2>Recent invoices</h2></div><Link href={href("invoices",client.slug)} className="panel-link">All invoices →</Link></div>
             {invoices.length ? <Table columns={["Invoice","Issued","Amount","Status"]} rows={invoices.slice(0,3).map(row=>[row.hosted_invoice_url?.startsWith("https://") ? <a key={row.id} href={row.hosted_invoice_url} target="_blank" rel="noopener noreferrer" className="table-link">{row.number} ↗</a> : row.number,dateLabel(row.issued_on),money(Number(row.amount_aud)),<span key={row.id} className="status-chip">{row.status}</span>])}/> : <Empty title="No invoices yet" detail="Invoices will be listed here when issued."/>}
           </section>
@@ -182,10 +220,59 @@ export default async function Dashboard({ params, searchParams }: {
           {months.length ? <Table columns={["Month","Gross sales","Net sales","Orders","Shopify sync"]} rows={months.map(row=>[monthLabel(row.month),money(row.gross_sales_aud),money(row.net_sales_aud),integer(row.orders),row.shopify_synced_at ? dateLabel(row.shopify_synced_at.split("T")[0]) : "Not synced"])}/> : <Empty title="No sales data yet" detail="Monthly Shopify totals, orders and refund-adjusted net sales will show here when connected."/>}</section>
         </> :
         chosenArea === "advertising" ? <>
-          <section className="kpi-grid three"><Metric label="Ad spend · this month" value={money(thisMonth?.ad_spend_aud)} detail="Google Ads spending"/><Metric label="Last updated" value={thisMonth?.ads_synced_at ? dateLabel(thisMonth.ads_synced_at.split("T")[0]) : "—"} /><Metric label="Reporting period" value={monthLabel(currentMonth())} detail="Calendar month · Australia"/></section>
-          <section className="panel"><div className="panel-heading"><div><span className="panel-kicker">GOOGLE ADS</span><h2>Advertising investment</h2></div></div>
-          {months.some(row=>row.ad_spend_aud !== null) ? <Table columns={["Month","Ad spend","Data last synced"]} rows={months.map(row=>[monthLabel(row.month),money(row.ad_spend_aud),row.ads_synced_at ? dateLabel(row.ads_synced_at.split("T")[0]) : "Not synced"])}/> : <Empty title="Advertising reporting is not connected" detail="Google Ads spend will appear here after the account integration is configured." />}
-          <p className="panel-footnote">Ad spend and Shopify sales come from different measurement systems; this portal does not treat one as attributed to the other.</p></section>
+          <section className="kpi-grid three">
+            <Metric label="Approved monthly spending limit" value={money(approvedLimit)} detail="Calendar-month authority · not an automatic spending control" accent/>
+            <Metric label="Recorded spend this month" value={money(spentThisMonth)} detail={latestSpendDay?"Daily Google Ads records through "+dateLabel(latestSpendDay):"No daily records yet"}/>
+            <Metric label="Limit less recorded spend" value={money(remainingBudget)} detail={spendSnapshotComplete?"Based on recorded daily spend":"Provisional · spending data incomplete"}/>
+          </section>
+          <section className="panel">
+            <div className="panel-heading"><div><span className="panel-kicker">HOW WE INVEST</span><h2>Your advertising plan</h2></div></div>
+            {advertising?<div className="agreement-list">
+              <div><span>Initial monthly testing budget</span><strong>{money(advertising.initial_testing_budget_aud)}</strong></div>
+              <div><span>Current approved monthly limit</span><strong>{money(approvedLimit)}</strong></div>
+              <div><span>Current stage</span><strong>{advertising.phase[0].toUpperCase()+advertising.phase.slice(1)}</strong></div>
+              <div><span>Advertising objectives</span><strong className="agency-wrap-text">{advertising.objectives||"Not set yet"}</strong></div>
+            </div>:<Empty title="Advertising plan not configured" detail="Steven will share an initial testing plan and budget for your approval."/>}
+            <p className="panel-footnote">The initial phase may involve testing and learning before results become consistent. Steven can redistribute spending within your approved monthly limit and may recommend scaling proven campaigns. Any change to the overall limit requires your approval. Ad spend is paid to the advertising platform separately from Steven's commission.</p>
+          </section>
+          {pendingBudget&&<section className="panel agency-budget-request">
+            <div className="panel-heading"><div><span className="panel-kicker">YOUR DECISION</span><h2>Advertising budget proposal</h2></div>
+              <span className="status-chip">Awaiting approval</span>
+            </div>
+            <div className="agency-budget-summary">
+              <div><span>Currently approved</span><strong>{money(pendingBudget.previous_monthly_limit_aud)}</strong></div>
+              <div><span>Proposed monthly limit</span><strong>{money(pendingBudget.proposed_monthly_limit_aud)}</strong></div>
+            </div>
+            <p className="agency-budget-reason">{pendingBudget.reason}</p>
+            {client.role==="owner"?<div className="agency-budget-decisions">
+              <form action={decideAdvertisingBudget}>
+                <input type="hidden" name="client_id" value={client.id}/>
+                <input type="hidden" name="request_id" value={pendingBudget.id}/>
+                <input type="hidden" name="decision" value="approve"/>
+                <button className="login-action agency-save" type="submit">Approve monthly limit →</button>
+              </form>
+              <form action={decideAdvertisingBudget}>
+                <input type="hidden" name="client_id" value={client.id}/>
+                <input type="hidden" name="request_id" value={pendingBudget.id}/>
+                <input type="hidden" name="decision" value="decline"/>
+                <button className="agency-light-button" type="submit">Decline</button>
+              </form>
+            </div>:<p className="agency-caption">Only the authorised owner of your business workspace can approve or decline budget changes.</p>}
+            <p className="panel-footnote">Approving updates Steven's spending authorisation only. It does not itself change Google Ads campaign budgets or create a charge.</p>
+          </section>}
+          <section className="panel">
+            <div className="panel-heading"><div><span className="panel-kicker">APPROVAL HISTORY</span><h2>Your budget decisions</h2></div></div>
+            {budgetRequests.length?<Table columns={["Proposed","Previous limit","New limit","Status","Reason"]} rows={budgetRequests.map(r=>[
+              dateLabel(r.created_at.slice(0,10)),money(r.previous_monthly_limit_aud),money(r.proposed_monthly_limit_aud),
+              <span key={r.id} className="status-chip">{r.status}</span>,r.reason
+            ])}/>:<Empty title="No budget requests yet" detail="Any increases or changes Steven proposes will appear here for review."/>}
+            <p className="panel-footnote">You can request a reduction or pause at any time by contacting <a href="mailto:hello@steven.marketing?subject=Advertising%20budget%20change">Steven directly ↗</a>. A dashboard approval is not proof that Google Ads has been updated; campaign adjustments are performed separately.</p>
+          </section>
+          <section className="panel">
+            <div className="panel-heading"><div><span className="panel-kicker">GOOGLE ADS</span><h2>Advertising investment</h2></div></div>
+            {months.some(row=>row.ad_spend_aud !== null) ? <Table columns={["Month","Ad spend (snapshot)","Data last synced"]} rows={months.map(row=>[monthLabel(row.month),money(row.ad_spend_aud),row.ads_synced_at ? dateLabel(row.ads_synced_at.split("T")[0]) : "Not synced"])}/> : <Empty title="Advertising reporting is not connected" detail="Google Ads spend will appear here after the account integration is configured." />}
+            <p className="panel-footnote">Advertising reporting may lag actual costs. Sales and advertising use different measurement systems; no automatic attribution or live spending enforcement is implied.</p>
+          </section>
         </> :
         chosenArea === "commissions" ? <>
           <section className="kpi-grid three">
