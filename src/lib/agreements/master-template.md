@@ -24,7 +24,7 @@ This Marketing Services and Performance Commission Agreement (Agreement) is made
 
 ## 4. Contract term
 4.1 The Agreement starts on the Commencement Date in Schedule A and continues for the Initial Commitment Period stated there (proposed default: three months), unless ended sooner under clause 12.2.
-4.2 After the Initial Commitment Period, the Agreement continues on a rolling monthly basis unless either party gives at least the Ordinary Notice Period in Schedule A (proposed default: 30 calendar days) in writing. Notice may be given during the initial period, but ordinary termination cannot take effect before it expires.
+4.2 After the Initial Commitment Period, the Agreement continues on a rolling monthly basis unless either party gives the Ordinary Notice Period in Schedule A (proposed default: 30 calendar days) in writing. To keep reporting and the Baseline calculation consistent, ordinary termination takes effect at the end of the first full Reporting Period that ends at least the Ordinary Notice Period after notice is given, and never before the Initial Commitment Period ends. Earlier termination for cause under clause 12.2 remains available.
 4.3 Each commission Reporting Period is a monthly anniversary period beginning on the numerical day of the Commencement Date and ending the day before the next anniversary. Where a month does not contain that day, use its final calendar day; each following anniversary is calculated from the original Commencement Date, not the previously adjusted date.
 4.4 There is no automatic new fixed term. Changes to the duration require both parties' written acceptance.
 
