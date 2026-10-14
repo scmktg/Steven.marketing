@@ -73,3 +73,17 @@ Revenue remaining = Shopify total sales
 - Portfolio figures sum the individual client's own contract-period result. A client filter shows the selected client's result and a breakdown table explains every deduction.
 - The new KPI and a **Google Ads · contract period** KPI can be shown/hidden with **Customize overview**. An existing calendar-month Ads KPI is retained, with a separate label.
 - The data currently comes from a **one-time administrator-authorized connector snapshot** and must be re-imported securely until a scheduled private worker is installed. No API keys or open ingestion routes were added. Browser clients can only read their own tenant's daily ad spend, never write it.
+
+
+## Contract-aligned Sales and Advertising reporting
+
+The **Agency → Sales / Advertising** and **Client → Sales / Advertising** reports now use the exact same monthly contract-anniversary periods as Commissions. For example a client starting on the 17th is reported from the 17th to the 16th, rather than by calendar month.
+
+- The current period is reported through the current Sydney date and labelled with its full agreed dates. Historic tables show up to six current/prior contract periods.
+- Sales fields are independently validated for each day, including Shopify total sales, net/gross product sales, customer shipping revenue and orders. Missing required daily rows make a total unavailable, never zero.
+- Advertising uses daily Google Ads account-local spend (4 decimals per day; **sum before rounding to cents**). Every date from period start to the as-of date must be represented for a verified total. Missing data shows a dash.
+- The Agency combined view sums different client anniversaries only if every included client has a configured period and complete necessary data. Individual and historical rows show their own coverage.
+- Shopify sales and advertising spend are **not equivalent to Google-attributed sales**; presenting them together does not compute ROAS or imply attribution.
+- **Advertising budget approvals remain calendar-month authorisations** and are clearly separated from advertising performance on the same page; Google Ads campaign budgets are not changed by dashboard approval.
+- The sales and advertising reports use the **existing stored daily snapshots**; this change aligns the reporting windows but does **not** install a new live Shopify or Google Ads background synchronisation job. On later days, missing daily rows will result in incomplete-data statuses.
+- For multiple clients, verify the daily-data query paging limits before relying on portfolio-scale aggregation; the UI fails closed for incomplete coverage rather than undercounting.
