@@ -95,11 +95,11 @@ export default async function Dashboard({ params, searchParams }: {
     const [metricsResult, termsResult, invoicesResult, dailyResult] = await Promise.all([
       supabase.from("client_monthly_metrics").select("month,gross_sales_aud,net_sales_aud,orders,ad_spend_aud,shopify_synced_at,ads_synced_at")
         .eq("client_id", client.id).order("month", {ascending:false}).limit(12),
-      supabase.from("client_terms").select("commission_model,contract_start_date,baseline_monthly_aud,commission_rate,tier_1_limit_aud,tier_2_limit_aud,tier_1_rate,tier_2_rate,tier_3_rate")
+      supabase.from("client_terms").select("commission_model,contract_start_date,revenue_basis,baseline_monthly_aud,commission_rate,tier_1_limit_aud,tier_2_limit_aud,tier_1_rate,tier_2_rate,tier_3_rate")
         .eq("client_id", client.id).maybeSingle(),
       supabase.from("client_invoices").select("id,number,issued_on,due_on,amount_aud,status,hosted_invoice_url")
         .eq("client_id", client.id).order("issued_on", {ascending:false, nullsFirst:false}).limit(30),
-      supabase.from("client_daily_sales").select("day,net_sales_aud")
+      supabase.from("client_daily_sales").select("day,net_sales_aud,gross_sales_aud,total_sales_aud,shipping_charges_aud,orders")
         .eq("client_id",client.id).gte("day",new Date(Date.now()-270*86400000).toISOString().slice(0,10)).order("day",{ascending:false}).limit(1000)
     ]);
     fetchFailed = fetchFailed || Boolean(metricsResult.error || termsResult.error || invoicesResult.error || dailyResult.error);
@@ -149,9 +149,9 @@ export default async function Dashboard({ params, searchParams }: {
         {!client ? <Empty title="Your dashboard is almost ready" detail="Your account is signed in, but it has not been assigned to a client workspace. Please contact steven.marketing to enable access." /> :
         chosenArea === "overview" ? <>
           <section className="kpi-grid" aria-label="Current month key metrics">
-            <Metric label="Net revenue · calendar month" value={money(netSales)} detail={thisMonth?.shopify_synced_at ? "Shopify · "+dateLabel(thisMonth.shopify_synced_at.split("T")[0]) : "Awaiting sales data"} accent />
+            <Metric label="Eligible revenue · contract period" value={money(currentPeriod?.revenue)} detail={currentPeriod?.coverageComplete?periodName+" · "+(terms?.revenue_basis==="total_sales"?"incl. shipping":"excl. shipping"):"Awaiting complete daily sales"} accent />
             <Metric label="Revenue above baseline" value={money(growth)} detail={currentPeriod?periodName:baseline===null?"Baseline not set":"Contract commencement not set"} />
-            <Metric label="Advertising spend" value={money(thisMonth?.ad_spend_aud)} detail={thisMonth?.ads_synced_at ? "Google Ads · "+dateLabel(thisMonth.ads_synced_at.split("T")[0]) : "Awaiting ad data"} />
+            <Metric label="Google Ads · calendar month" value={money(thisMonth?.ad_spend_aud)} detail={thisMonth?.ads_synced_at ? "Google Ads · "+dateLabel(thisMonth.ads_synced_at.split("T")[0]) : "Awaiting ad data"} />
             <Metric label="Estimated commission" value={money(commission)} detail={currentPeriod?.coverageComplete?periodName+" · Provisional":"Awaiting complete contract-period data"} />
           </section>
           <div className="dashboard-columns">
@@ -163,6 +163,8 @@ export default async function Dashboard({ params, searchParams }: {
                 <div><span>Model</span><strong>{modelName}</strong></div>
                 <div><span>Contract starts</span><strong>{dateLabel(terms.contract_start_date)}</strong></div>
                 <div><span>Current contract period</span><strong>{periodName}</strong></div>
+                <div><span>Eligible revenue basis</span><strong>{terms.revenue_basis==="total_sales"?"Shopify total sales · includes shipping":"Net product sales · excludes shipping"}</strong></div>
+                <div><span>Eligible revenue to date</span><strong>{money(currentPeriod?.revenue)}</strong></div>
                 <div><span>Fixed monthly baseline</span><strong>{money(baseline)}</strong></div>
                 <div><span>Commission rate</span><strong>{tiered?[pct(terms.tier_1_rate),pct(terms.tier_2_rate),pct(terms.tier_3_rate)].join(" / "):hasGrowthModel?pct(rate):"Custom"}</strong></div>
                 <div><span>Estimated commission</span><strong>{money(commission)}</strong></div>
@@ -197,7 +199,11 @@ export default async function Dashboard({ params, searchParams }: {
                 <div><span>Commission model</span><strong>{modelName}</strong></div>
                 <div><span>Contract commencement</span><strong>{dateLabel(terms.contract_start_date)}</strong></div>
                 <div><span>Current period</span><strong>{periodName}</strong></div>
-                <div><span>Contract-period net revenue</span><strong>{money(currentPeriod?.revenue)}</strong></div>
+                <div><span>Commission-eligible contract revenue</span><strong>{money(currentPeriod?.revenue)}</strong></div>
+                <div><span>Revenue definition</span><strong>{terms.revenue_basis==="total_sales"?"Shopify total sales incl. shipping":"Net product sales excl. shipping"}</strong></div>
+                <div><span>Net product sales</span><strong>{money(currentPeriod?.netRevenue)}</strong></div>
+                <div><span>Shopify total sales</span><strong>{money(currentPeriod?.totalRevenue)}</strong></div>
+                <div><span>Shipping charges</span><strong>{money(currentPeriod?.shipping)}</strong></div>
                 <div><span>Agreed fixed monthly baseline</span><strong>{money(baseline)}</strong></div>
                 <div><span>Eligible growth above baseline</span><strong>{money(growth)}</strong></div>
                 {tiered&&currentPeriod?.breakdown.map((t,i)=><div key={i}><span>{t.label} at {pct(t.rate)}</span><strong>{money(t.commission)}</strong></div>)}
@@ -209,9 +215,9 @@ export default async function Dashboard({ params, searchParams }: {
                 : currentPeriod?"Only "+currentPeriod.recordedDays+" of "+currentPeriod.expectedDays+" daily sales records are available. Commission will appear when reporting is complete.":"Enter the agreed commencement date and baseline to enable period calculations."}</p>
               {history.length>0&&<>
                 <div className="panel-heading" style={{marginTop:32}}><div><span className="panel-kicker">HISTORICAL PERIODS</span><h2>Contract month history</h2></div></div>
-                <Table columns={["Contract period","Net revenue","Growth above baseline","Estimated commission","Reporting"]} rows={history.map(p=>[
+                <Table columns={["Contract period","Eligible revenue","Net product sales","Shopify total sales","Growth above baseline","Estimated commission","Reporting"]} rows={history.map(p=>[
                   dateLabel(p.start)+" – "+dateLabel(p.end),
-                  money(p.revenue),money(p.growth),money(p.commission),
+                  money(p.revenue),money(p.netRevenue),money(p.totalRevenue),money(p.growth),money(p.commission),
                   p.coverageComplete?p.isCurrent?"In progress":"Provisional":"Incomplete daily data"
                 ])}/>
               </>}
