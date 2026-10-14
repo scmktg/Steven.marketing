@@ -5,6 +5,7 @@ import { SignOut } from "@/components/sign-out";
 import { requireAgencyAdmin } from "@/lib/agency-auth";
 import { contractHistory, sydneyToday, adSpendForPeriod, revenueAfterDeductions, type AgreementTerms, type DailySales, type DailyAdSpend } from "@/lib/commission";
 import { createAgencyClient, saveAgencyTerms, assignClientMember, removeClientMember, addAgencyInvoice, saveAgencyOverviewPreferences, saveAgencyAgreementMaster, saveAgencyClientAgreementDraft } from "../actions";
+import {saveAgencyAdvertisingSettings,proposeAgencyAdvertisingBudget,withdrawAgencyAdvertisingBudget} from "../budget-actions";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title:"Agency dashboard | steven.marketing", robots:{index:false,follow:false} };
@@ -17,6 +18,8 @@ type Invoice = {id:string;client_id:string;number:string;amount_aud:number;statu
 type Membership = {client_id:string;user_id:string;role:string};
 type MasterAgreement = {template_key:string;title:string;body_markdown:string;version:number;updated_at:string};
 type ClientAgreementDraft = {client_id:string;body_markdown:string;source_version:number;revision:number;updated_at:string};
+type AdvertisingSettings = {client_id:string;initial_testing_budget_aud:number;approved_monthly_limit_aud:number|null;objectives:string;phase:"testing"|"optimising"|"scaling"};
+type AdvertisingRequest = {id:string;client_id:string;proposed_monthly_limit_aud:number;previous_monthly_limit_aud:number|null;reason:string;status:"pending"|"approved"|"declined"|"withdrawn";created_at:string;decided_at:string|null};
 type OverviewCard = "revenue_after_costs" | "contract_ad_spend" | "revenue" | "total_sales" | "net_sales" | "gross_sales" | "shipping" | "growth" | "commission" | "orders" | "ad_spend";
 type OverviewMode = "contract" | "calendar";
 const overviewOptions: {key:OverviewCard;label:string}[] = [
@@ -46,9 +49,12 @@ const percentage=(n:number|null|undefined)=>n===null||n===undefined?"—":`${(Nu
 const monthNow=()=>sydneyToday().slice(0,7)+"-01";
 // Render only allowlisted, public commercial placeholders. Client legal identity,
  // financial scope and third-party permissions still require explicit completion.
-function agreementPreview(markdown:string,client?:Client,terms?:Terms){
+function agreementPreview(markdown:string,client?:Client,terms?:Terms,advertising?:AdvertisingSettings){
   const termsMap:Record<string,string>={
     CLIENT_DISPLAY_NAME:client?.name??"[[CLIENT_DISPLAY_NAME]]",
+    INITIAL_AD_TEST_BUDGET_AUD:advertising?aud(advertising.initial_testing_budget_aud):"[[INITIAL_AD_TEST_BUDGET_AUD]]",
+    APPROVED_AD_SPEND_LIMIT_AUD:advertising?.approved_monthly_limit_aud!==null&&advertising?.approved_monthly_limit_aud!==undefined?aud(advertising.approved_monthly_limit_aud):"[[APPROVED_AD_SPEND_LIMIT_AUD]]",
+    ADVERTISING_OBJECTIVES:advertising?.objectives||"[[ADVERTISING_OBJECTIVES]]",
     CONTRACT_START_DATE:terms?.contract_start_date?shortDate(terms.contract_start_date):"[[CONTRACT_START_DATE]]",
     COMMISSION_MODEL:terms?.commission_model==="tiered_revenue_growth"?"Tiered growth above baseline":terms?.commission_model==="revenue_growth"?"Single-rate growth above baseline":terms?.commission_model==="manual"?"Custom / individually reconciled":"[[COMMISSION_MODEL]]",
     MONTHLY_BASELINE_AUD:terms?.baseline_monthly_aud!==null&&terms?.baseline_monthly_aud!==undefined?aud(terms.baseline_monthly_aud):"[[MONTHLY_BASELINE_AUD]]",
@@ -106,7 +112,7 @@ export default async function AgencyPage({params,searchParams}:{
   const {supabase,userId}=await requireAgencyAdmin();
   const query=await searchParams;
 
-  const [clientsResponse,termsResponse,metricsResponse,invoicesResponse,membershipsResponse,dailyResponse,adsDailyResponse,prefsResponse,agreementMasterResponse,agreementDraftsResponse]=await Promise.all([
+  const [clientsResponse,termsResponse,metricsResponse,invoicesResponse,membershipsResponse,dailyResponse,adsDailyResponse,prefsResponse,agreementMasterResponse,agreementDraftsResponse,budgetSettingsResponse,budgetRequestsResponse]=await Promise.all([
     supabase.from("clients").select("id,name,slug").order("name").limit(200),
     supabase.from("client_terms").select("client_id,commission_model,contract_start_date,revenue_basis,baseline_monthly_aud,commission_rate,tier_1_limit_aud,tier_2_limit_aud,tier_1_rate,tier_2_rate,tier_3_rate").limit(200),
     supabase.from("client_monthly_metrics").select("client_id,month,gross_sales_aud,net_sales_aud,orders,ad_spend_aud,shopify_synced_at,ads_synced_at").order("month",{ascending:false}).limit(1000),
@@ -116,9 +122,11 @@ export default async function AgencyPage({params,searchParams}:{
     supabase.from("client_daily_ad_spend").select("client_id,day,ads_account_id,ad_spend_aud").gte("day",new Date(Date.now()-270*86400000).toISOString().slice(0,10)).order("day",{ascending:false}).limit(1000),
     supabase.from("agency_dashboard_preferences").select("overview_mode,visible_cards").eq("user_id",userId).maybeSingle(),
     supabase.from("agency_agreement_templates").select("template_key,title,body_markdown,version,updated_at").eq("template_key","marketing-performance-v1").maybeSingle(),
-    supabase.from("client_agreement_drafts").select("client_id,body_markdown,source_version,revision,updated_at").limit(200)
+    supabase.from("client_agreement_drafts").select("client_id,body_markdown,source_version,revision,updated_at").limit(200),
+    supabase.from("client_ad_budget_settings").select("client_id,initial_testing_budget_aud,approved_monthly_limit_aud,objectives,phase").limit(200),
+    supabase.from("client_ad_budget_requests").select("id,client_id,proposed_monthly_limit_aud,previous_monthly_limit_aud,reason,status,created_at,decided_at").order("created_at",{ascending:false}).limit(300)
   ]);
-  const failed=Boolean(clientsResponse.error||termsResponse.error||metricsResponse.error||invoicesResponse.error||membershipsResponse.error||dailyResponse.error||adsDailyResponse.error||prefsResponse.error||agreementMasterResponse.error||agreementDraftsResponse.error);
+  const failed=Boolean(clientsResponse.error||termsResponse.error||metricsResponse.error||invoicesResponse.error||membershipsResponse.error||dailyResponse.error||adsDailyResponse.error||prefsResponse.error||agreementMasterResponse.error||agreementDraftsResponse.error||budgetSettingsResponse.error||budgetRequestsResponse.error);
   const clients=(clientsResponse.data||[]) as Client[];
   const terms=(termsResponse.data||[]) as Terms[];
   const allMetrics=(metricsResponse.data||[]) as Metrics[];
@@ -128,6 +136,18 @@ export default async function AgencyPage({params,searchParams}:{
   const dailyAds=(adsDailyResponse.data||[]) as DailyAdSpend[];
   const agreementMaster=agreementMasterResponse.data as MasterAgreement|null;
   const agreementDrafts=(agreementDraftsResponse.data||[]) as ClientAgreementDraft[];
+  const advertisingSettings=(budgetSettingsResponse.data||[]) as AdvertisingSettings[];
+  const advertisingRequests=(budgetRequestsResponse.data||[]) as AdvertisingRequest[];
+  const budgetFor=(id:string)=>advertisingSettings.find(a=>a.client_id===id);
+  const pendingBudget=(id:string)=>advertisingRequests.find(a=>a.client_id===id&&a.status==="pending");
+  const monthSpend=(id:string)=>{
+    const records=dailyAds.filter(a=>a.client_id===id&&a.day>=monthNow()&&a.day<=sydneyToday()&&a.ad_spend_aud!==null);
+    if(!records.length)return null;
+    const amount=Math.round(records.reduce((total,a)=>total+Math.round(Number(a.ad_spend_aud)*10000),0)/100)/100;
+    const days=new Set(records.map(a=>a.day)).size;
+    const through=records.map(a=>a.day).sort().at(-1)??"";
+    return {amount,days,through,complete:days===Number(sydneyToday().slice(8,10))};
+  };
   const overviewMode:OverviewMode=prefsResponse.data?.overview_mode==="calendar"?"calendar":"contract";
   const configuredCards=Array.isArray(prefsResponse.data?.visible_cards)?prefsResponse.data.visible_cards as string[]:initialCards;
   const visibleCards=overviewOptions.map(x=>x.key).filter(x=>configuredCards.includes(x));
@@ -365,7 +385,7 @@ export default async function AgencyPage({params,searchParams}:{
             {clients.length?<div className="agency-client-list">{clients.map(c=><Link key={c.id} href={path("clients",c.id)} className={`agency-client-item${selected===c.id?" is-selected":""}`}><span className="client-icon">{c.name.slice(0,1)}</span><span><strong>{c.name}</strong><small>{memberships.filter(m=>m.client_id===c.id).length} users · {c.slug}</small></span><span className="client-arrow">↗</span></Link>)}</div>:<Empty title="No client workspaces" description="Create one below."/>}
           </Panel>
           <Panel eyebrow="NEW CLIENT" title="Create a client">
-            <form action={createAgencyClient} className="agency-form"><Field name="name" label="Business name" placeholder="e.g. New Client" required/><Field name="slug" label="URL slug" placeholder="e.g. new-client" required/><button type="submit" className="login-action agency-save">Create workspace →</button></form>
+            <form action={createAgencyClient} className="agency-form"><Field name="name" label="Business name" placeholder="e.g. New Client" required/><Field name="slug" label="URL slug" placeholder="e.g. new-client" required/><button type="submit" className="login-action agency-save">Create workspace →</button></form><p className="agency-caption">Next: set the initial testing budget and advertising objectives under Advertising, then propose the agreed spending limit for client approval.</p>
           </Panel>
           {selected&&chosen&&<Panel eyebrow="ACCESS CONTROL" title={`${chosen.name} · Team members`}>
             {memberships.filter(m=>m.client_id===selected).length?<Table titles={["Supabase user ID","Role","Remove access"]} rows={memberships.filter(m=>m.client_id===selected).map(m=>[
@@ -381,8 +401,76 @@ export default async function AgencyPage({params,searchParams}:{
           <Panel eyebrow="REVENUE" title="Monthly sales reporting">{relevantMetrics.some(m=>m.net_sales_aud!==null)?<Table titles={["Client","Month","Gross sales","Net sales","Orders","Last synced"]} rows={relevantMetrics.filter(m=>m.net_sales_aud!==null).map(m=>[lookup(m.client_id),monthName(m.month),aud(m.gross_sales_aud),aud(m.net_sales_aud),whole(m.orders),shortDate(m.shopify_synced_at)])}/>:<Empty title="No connected sales data" description="Shopify sales will appear once each client’s integration is authorised and running."/>}</Panel>
         </>}
         {sectionKey==="advertising"&&<>
-          <div className="kpi-grid three"><Stat featured label="Total advertising spend" value={aud(spendTotal)}/><Stat label="Reporting clients" value={whole(spendKnown.length)}/><Stat label="Period" value={monthName(current)}/></div>
-          <Panel eyebrow="CAMPAIGNS" title="Google Ads reporting">{relevantMetrics.some(m=>m.ad_spend_aud!==null)?<Table titles={["Client","Month","Ad spend","Last synced"]} rows={relevantMetrics.filter(m=>m.ad_spend_aud!==null).map(m=>[lookup(m.client_id),monthName(m.month),aud(m.ad_spend_aud),shortDate(m.ads_synced_at)])}/>:<Empty title="No advertising data yet" description="Authorise advertising account syncs before reporting real spending."/>}<p className="panel-footnote">Spend is not automatically attributed to Shopify revenue. Report attribution separately.</p></Panel>
+          <div className="kpi-grid three">
+            <Stat featured label="Google Ads · calendar-month snapshot" value={aud(spendTotal)} note="Reporting snapshot; not a live spend control"/>
+            <Stat label="Clients with approved limits" value={whole(filteredClients.filter(c=>budgetFor(c.id)?.approved_monthly_limit_aud!==null&&budgetFor(c.id)?.approved_monthly_limit_aud!==undefined).length)}/>
+            <Stat label="Awaiting client approval" value={whole(filteredClients.filter(c=>Boolean(pendingBudget(c.id))).length)}/>
+          </div>
+          {filteredClients.map(c=>{
+            const budget=budgetFor(c.id),pending=pendingBudget(c.id),spend=monthSpend(c.id);
+            const approved=budget?.approved_monthly_limit_aud??null;
+            return <Panel key={c.id} eyebrow="ADVERTISING INVESTMENT" title={c.name}
+              aside={<Link className="panel-link" href={path("advertising",c.id)}>Client budget →</Link>}>
+              <div className="agency-budget-summary">
+                <div><span>Approved monthly limit</span><strong>{aud(approved)}</strong></div>
+                <div><span>Initial testing plan</span><strong>{aud(budget?.initial_testing_budget_aud)}</strong></div>
+                <div><span>Recorded spend this month</span><strong>{aud(spend?.amount)}</strong></div>
+                <div><span>Stage</span><strong>{budget?.phase??"Not configured"}</strong></div>
+              </div>
+              <p className="agency-caption">Calendar-month spending authority · {spend?("Google Ads snapshot through "+shortDate(spend.through)+(spend.complete?" · recorded each day":" · incomplete days")):"No daily Google Ads spending recorded"}. Advertising is not automatically paused or scaled by this dashboard.</p>
+              {budget?.objectives&&<p className="agency-caption"><strong>Objectives:</strong> {budget.objectives}</p>}
+              <form className="agency-form" action={saveAgencyAdvertisingSettings}>
+                <input type="hidden" name="client_id" value={c.id}/>
+                <Field name="initial_testing_budget_aud" label="Initial monthly testing budget (AUD)" type="number" min="0" step="0.01" required
+                  defaultValue={budget?.initial_testing_budget_aud??""} placeholder="Agreed starting plan"/>
+                <label className="agency-field"><span>Stage</span><select name="phase" defaultValue={budget?.phase??"testing"}>
+                  <option value="testing">Testing · learn and gather data</option>
+                  <option value="optimising">Optimising · improve results</option>
+                  <option value="scaling">Scaling · proven campaigns</option>
+                </select></label>
+                <label className="agency-field"><span>Advertising objectives</span><textarea name="objectives" maxLength={1200}
+                  rows={3} defaultValue={budget?.objectives??""} placeholder="e.g. Qualify conversion tracking, test search terms, then target contribution-positive growth"/></label>
+                <button type="submit" className="login-action agency-save">Save advertising plan →</button>
+              </form>
+              <p className="agency-caption">Saving a plan does not grant or increase spending authority. Only the client's owner-level account can approve a proposed monthly limit.</p>
+              {budget&&<>
+                {pending?<div className="agency-budget-pending">
+                  <strong>Awaiting client decision: {aud(pending.proposed_monthly_limit_aud)} / calendar month</strong>
+                  <p>{pending.reason}</p>
+                  <form action={withdrawAgencyAdvertisingBudget}>
+                    <input type="hidden" name="client_id" value={c.id}/><input type="hidden" name="request_id" value={pending.id}/>
+                    <button type="submit" className="agency-light-button">Withdraw proposal</button>
+                  </form>
+                </div>:<form className="agency-form" action={proposeAgencyAdvertisingBudget}>
+                  <input type="hidden" name="client_id" value={c.id}/>
+                  <Field name="proposed_monthly_limit_aud" label={approved===null?"Propose initial authorised monthly limit (AUD)":"Recommend a new monthly spending limit (AUD)"}
+                    placeholder="Amount to approve" min="0" step="0.01" type="number" required/>
+                  <label className="agency-field"><span>Reason for client approval</span><textarea name="reason" required minLength={12} maxLength={1200} rows={3}
+                    placeholder="Why this amount? Explain the tests, economics, results and what happens if performance falls."/></label>
+                  <button type="submit" className="login-action agency-save">Request client approval →</button>
+                </form>}
+                <p className="agency-caption">Approvals appear in the authorised client's Advertising dashboard. A client can request a pause or reduction at any time; actual Google Ads changes are made separately.</p>
+              </>}
+              {advertisingRequests.filter(r=>r.client_id===c.id).length>0&&
+                <div className="agency-budget-history">
+                  <h3>Approval history</h3>
+                  <Table titles={["Requested on","Proposed limit","Prior approved limit","Decision","Reason"]} rows={
+                    advertisingRequests.filter(r=>r.client_id===c.id).slice(0,10).map(r=>[
+                      shortDate(r.created_at),aud(r.proposed_monthly_limit_aud),aud(r.previous_monthly_limit_aud),
+                      <span key={r.id} className="status-chip">{r.status}</span>,r.reason
+                    ])
+                  }/>
+                </div>}
+            </Panel>;
+          })}
+          {filteredClients.length===0&&<Empty title="No clients yet" description="Create a client, then agree their initial testing budget."/>}
+          <Panel eyebrow="ACTUAL SPEND" title="Google Ads reporting">
+            {relevantMetrics.some(m=>m.ad_spend_aud!==null)?
+              <Table titles={["Client","Month","Ad spend (snapshot)","Last updated"]} rows={relevantMetrics.filter(m=>m.ad_spend_aud!==null).map(m=>[
+                lookup(m.client_id),monthName(m.month),aud(m.ad_spend_aud),shortDate(m.ads_synced_at)
+              ])}/>:<Empty title="No advertising data yet" description="Authorise a Google Ads reporting integration before reporting spending."/>}
+            <p className="panel-footnote">Approved budgets are calendar-month permissions, not money already spent. Google Ads spending records may lag. Steven remains responsible for adjusting campaign budgets within the approved limit; this screen does not change live campaigns.</p>
+          </Panel>
         </>}
         {sectionKey==="commissions"&&<>
           <div className="kpi-grid three">
@@ -481,7 +569,7 @@ export default async function AgencyPage({params,searchParams}:{
               const clientTerms=terms.find(t=>t.client_id===selected);
               const existing=agreementDrafts.find(d=>d.client_id===selected);
               const body=existing?.body_markdown??agreementMaster.body_markdown;
-              const preview=agreementPreview(body,client,clientTerms);
+              const preview=agreementPreview(body,client,clientTerms,budgetFor(selected));
               const outstanding=(preview.match(/\[\[[A-Z0-9_]+\]\]/g)||[]).length;
               return <div className="agency-client-contract">
                 <p className="agency-caption">{client?.name} · {existing?"Private client draft revision "+existing.revision:"Based on master version "+agreementMaster.version}. Commercial values are previewed from the saved commission agreement; unresolved fields remain highlighted.</p>
