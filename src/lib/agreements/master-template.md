@@ -9,7 +9,9 @@ This is an agreement between **me, Steven** (trading as Steven Marketing), and *
 **Start date:** [[CONTRACT_START_DATE]]  
 **The work I'll do:** [[SCOPE_OF_SERVICES]]  
 **Products, channels and locations included:** [[ELIGIBLE_SALES_SCOPE]]  
-**Your advertising budget and required approvals:** [[ADVERTISING_BUDGET_AND_APPROVAL]]  
+**Initial monthly testing budget:** [[INITIAL_AD_TEST_BUDGET_AUD]]  
+**Your approved monthly advertising limit:** [[APPROVED_AD_SPEND_LIMIT_AUD]]  
+**Advertising objectives:** [[ADVERTISING_OBJECTIVES]]  
 **Agreed monthly revenue baseline:** [[MONTHLY_BASELINE_AUD]] (based on [[BASELINE_REFERENCE_PERIOD]])  
 **Revenue I will measure:** [[REVENUE_BASIS]] using [[PRIMARY_REPORTING_SOURCE]]  
 **What counts as revenue:** [[REVENUE_DEFINITION_AND_EXCLUSIONS]] (including GST, shipping, refunds and cancellations)  
@@ -33,7 +35,7 @@ This is an agreement between **me, Steven** (trading as Steven Marketing), and *
 ## SCHEDULE B — Clear terms
 
 ### 1. What I'll do
-I'll research, plan, manage and improve the marketing work described above, and share straightforward results. I'll work carefully, but I can't promise particular sales or rankings. You'll give me accurate business information, reasonable access and timely approvals. You remain responsible for your products, pricing, customer orders and legal compliance. I won't commit you to extra spending without approval. Your advertising and other approved outside costs are separate from my commission.
+I'll research, plan, manage and improve the marketing work described above, and share straightforward results. I'll work carefully, but I can't promise particular sales or rankings. You'll give me accurate business information, reasonable access and timely approvals. You remain responsible for your products, pricing, customer orders and legal compliance. We will agree an initial testing budget to learn what works. I'll explain results, optimise campaigns and may recommend more spending when the evidence supports it. I can move spending between campaigns within your approved calendar-month limit, but I won't increase that limit without your written approval. Your approval through your secure dashboard counts as written approval of the **budget change only**, not other contract terms. You can request a reduction or pause whenever you wish. Your advertising and other approved outside costs are paid separately from my commission.
 
 ### 2. How I'll be paid
 Each contract month runs from the monthly anniversary of the start date to the day before the next anniversary. **Revenue growth** is the agreed revenue minus the baseline, never less than zero. For tiered commission, each rate applies **only to the growth within that tier**. If we agree to a different fee model above, that model applies instead.
