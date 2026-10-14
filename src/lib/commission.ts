@@ -148,3 +148,50 @@ export function contractHistory(term:AgreementTerms|null,rows:DailySales[],today
   }
   return results;
 }
+
+export type DailyAdSpend = {
+  client_id?: string;
+  day: string;
+  ads_account_id: string;
+  ad_spend_aud: number | string | null;
+};
+export type PeriodAdSpend = {
+  amount: number | null;
+  recordedDays: number;
+  expectedDays: number;
+  coverageComplete: boolean;
+};
+
+// Spend is stored with 4 decimal places, then summed before being rounded to cents.
+// An absent Google Ads date is NOT treated as $0: a missing export could mean
+// missing data rather than zero spending. This prevents optimistic net figures.
+export function adSpendForPeriod(period:PeriodResult, rows:DailyAdSpend[]):PeriodAdSpend {
+  const byDate=new Map<string,number>();
+  for(const row of rows){
+    if(row.day<period.start||row.day>period.asOf)continue;
+    const amount=row.ad_spend_aud===null?NaN:Number(row.ad_spend_aud);
+    if(!Number.isFinite(amount)||amount<0)continue;
+    byDate.set(row.day,(byDate.get(row.day)??0)+Math.round(amount*10000));
+  }
+  const recordedDays=byDate.size;
+  const expectedDays=period.expectedDays;
+  const coverageComplete=expectedDays>0&&recordedDays===expectedDays;
+  const amount=coverageComplete?Math.round([...byDate.values()].reduce((sum,x)=>sum+x,0)/100)/100:null;
+  return {amount,recordedDays,expectedDays,coverageComplete};
+}
+
+// Use *Shopify total sales*, remove customer shipping charges, then agency
+// commission and Google Ads account spend for the exact same contract window.
+// Do not substitute net sales when total sales are missing: tax treatment can
+// differ. This is contribution after specified deductions, NEVER accounting profit.
+export function revenueAfterDeductions(period:PeriodResult, ads:PeriodAdSpend):number|null {
+  if(!period.coverageComplete||!ads.coverageComplete||
+    period.totalRevenue===null||period.shipping===null||
+    period.commission===null||ads.amount===null)return null;
+  return Math.round((
+    Math.round(period.totalRevenue*100)-
+    Math.round(period.shipping*100)-
+    Math.round(period.commission*100)-
+    Math.round(ads.amount*100)
+  ))/100;
+}
