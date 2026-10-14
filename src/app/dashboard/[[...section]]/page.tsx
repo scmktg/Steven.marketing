@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { notFound, redirect } from "next/navigation";
 import { SignOut } from "@/components/sign-out";
 import { portalConfigured } from "@/lib/supabase/config";
@@ -38,7 +39,7 @@ function Metric({ label, value, detail, accent = false }: {label:string;value:st
 function Empty({ title, detail }: {title:string;detail:string}) {
   return <div className="empty-state"><span className="empty-symbol">◎</span><strong>{title}</strong><p>{detail}</p></div>;
 }
-function Table({ columns, rows }: {columns:string[];rows:React.ReactNode[][]}) {
+function Table({ columns, rows }: {columns:string[];rows:ReactNode[][]}) {
   return <div className="table-scroll"><table className="data-table"><thead><tr>{columns.map(column => <th key={column}>{column}</th>)}</tr></thead>
     <tbody>{rows.map((row, index) => <tr key={index}>{row.map((item,i)=><td key={i}>{item}</td>)}</tr>)}</tbody></table></div>;
 }
