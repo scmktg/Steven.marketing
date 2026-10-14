@@ -108,6 +108,55 @@ export async function saveAgencyOverviewPreferences(data: FormData) {
   finish("overview",!error,uuidPattern.test(selectedClient)?selectedClient:undefined);
 }
 
+
+// Agreement editing is deliberately draft-only. No SignWell sends, client
+// memberships, invoice changes or signed-contract mutations occur here.
+const validateAgreementBody=(value:string)=>value.length>=400&&value.length<=80000&&
+  value.includes("SCHEDULE A")&&value.includes("SCHEDULE B")&&
+  value.includes("13. Limited post-termination");
+
+export async function saveAgencyAgreementMaster(data:FormData) {
+  const {supabase,userId}=await requireAgencyAdmin();
+  const body=clean(data,"body_markdown").replace(/\r\n/g,"\n");
+  const expected=Number(clean(data,"expected_version"));
+  const key="marketing-performance-v1";
+  if(!validateAgreementBody(body)||!Number.isInteger(expected)||expected<1)
+    finish("agreements",false);
+  const {data:rows,error}=await supabase.from("agency_agreement_templates")
+    .update({body_markdown:body,version:expected+1,updated_at:new Date().toISOString(),updated_by:userId})
+    .eq("template_key",key).eq("version",expected).select("version");
+  finish("agreements",!error&&rows?.length===1);
+}
+
+export async function saveAgencyClientAgreementDraft(data:FormData) {
+  const {supabase,userId}=await requireAgencyAdmin();
+  const clientId=clean(data,"client_id");
+  if(!await allowedClient(supabase,clientId)) finish("agreements",false);
+  const body=clean(data,"body_markdown").replace(/\r\n/g,"\n");
+  const expected=Number(clean(data,"expected_revision"));
+  const version=Number(clean(data,"source_master_version"));
+  if(!validateAgreementBody(body)||!Number.isInteger(expected)||expected<0||
+    !Number.isInteger(version)||version<1)finish("agreements",false,clientId);
+  const {data:existing,error:fetchError}=await supabase.from("client_agreement_drafts")
+    .select("revision").eq("client_id",clientId).maybeSingle();
+  if(fetchError)finish("agreements",false,clientId);
+  const now=new Date().toISOString();
+  if(existing){
+    if(existing.revision!==expected)finish("agreements",false,clientId);
+    const {data:updated,error}=await supabase.from("client_agreement_drafts").update({
+      body_markdown:body,revision:expected+1,updated_at:now,updated_by:userId
+    }).eq("client_id",clientId).eq("revision",expected).select("revision");
+    finish("agreements",!error&&updated?.length===1,clientId);
+  }
+  if(expected!==0)finish("agreements",false,clientId);
+  const {error}=await supabase.from("client_agreement_drafts").insert({
+    client_id:clientId,template_key:"marketing-performance-v1",
+    body_markdown:body,source_version:version,revision:1,
+    updated_at:now,updated_by:userId
+  });
+  finish("agreements",!error,clientId);
+}
+
 export async function assignClientMember(data: FormData) {
   const { supabase } = await requireAgencyAdmin();
   const clientId = clean(data,"client_id");
