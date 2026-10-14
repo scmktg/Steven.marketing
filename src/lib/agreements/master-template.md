@@ -1,6 +1,4 @@
 # Marketing Partnership Agreement
-**Draft for legal review before signing**
-
 This is an agreement between **me, Steven** (trading as Steven Marketing), and **your business** named below. I do the marketing work; you run your business. These are the terms I agree to and ask you to agree to.
 
 ## SCHEDULE A — Our agreed details
