@@ -85,7 +85,7 @@ export async function saveAgencyTerms(data: FormData) {
 }
 
 const visibleOverviewKeys = [
-  "revenue","total_sales","net_sales","gross_sales","shipping",
+  "revenue_after_costs","contract_ad_spend","revenue","total_sales","net_sales","gross_sales","shipping",
   "growth","commission","orders","ad_spend"
 ] as const;
 
