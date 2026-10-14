@@ -297,7 +297,7 @@ export default async function AgencyPage({params,searchParams}:{
     <main className="portal-main">
       <header className="portal-topbar"><span>AGENCY DASHBOARD</span><div className="portal-top-right"><span className="privacy-pill"><i/> Administrator</span><span className="portal-avatar">S</span></div></header>
       <div className="portal-body">
-        <div className="page-heading"><div><p className="dashboard-eyebrow">STEVEN MARKETING / MANAGEMENT</p><h1>{sections.find(x=>x.key===sectionKey)?.label}<span className="heading-period"> / {monthName(current)}</span></h1><p className="dashboard-subtitle">One place to manage your clients, performance and billing.</p></div></div>
+        <div className="page-heading"><div><p className="dashboard-eyebrow">STEVEN MARKETING / MANAGEMENT</p><h1>{sections.find(x=>x.key===sectionKey)?.label}<span className="heading-period"> / {["sales","advertising","commissions"].includes(sectionKey)?(selected&&histories.get(selected)?.[0]?shortDate(histories.get(selected)?.[0].start)+" – "+shortDate(histories.get(selected)?.[0].end):"Contract periods"):monthName(current)}</span></h1><p className="dashboard-subtitle">One place to manage your clients, performance and billing.</p></div></div>
         {sectionKey!=="clients"&&<ClientSelector clients={clients} section={sectionKey} selected={selected}/>}
         {query.success==="1"&&<div className="agency-notification" role="status">Changes saved successfully.</div>}
         {query.error==="1"&&<div className="dashboard-alert" role="alert">Could not save changes. Please check the information and account permissions.</div>}
