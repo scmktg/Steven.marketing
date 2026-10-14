@@ -1,8 +1,10 @@
 import Link from "next/link";
+import { RecoveryRedirect } from "@/components/recovery-redirect";
 
 export default function Home() {
   return (
     <main className="site">
+      <RecoveryRedirect />
       <header className="header"><Link href="/" className="logo">steven.marketing</Link></header>
       <section className="home-hero" aria-labelledby="hero-title">
         <p className="eyebrow">Performance based marketing</p>

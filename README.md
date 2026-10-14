@@ -92,3 +92,18 @@ For new passwordless invitations to transition to a password-protected account, 
 ```
 
 The server verifies the one-time token through Supabase and sends the invited person to `/reset-password` to set their password. If you use the default `{{ .ConfirmationURL }}` email instead, Supabase may redirect to the homepage without a usable password-setup flow, so configure and test invitations before launching. The same route accepts `type=recovery` if recovery templates are later customised. Never publish invitation tokens in logs or GitHub.
+
+### Password recovery redirection
+
+Password-reset requests now use the exact allow-listed URL
+`https://steven.marketing/auth/callback` (no extra query parameters).
+Ensure **Authentication → URL Configuration → Redirect URLs** contains
+that *exact* URL. The client-side callback page processes Supabase's
+PKCE `?code=` or legacy implicit `#access_token=…` return and then
+displays `/reset-password`; server route handlers cannot read URL
+fragments. Existing emails that return a recovery token fragment to the
+home page are also redirected to the recovery handler. After changing
+the configuration, request a **fresh** reset email; old one-time links
+cannot be reused. If a custom Supabase recovery email template links
+straight to `{{ .SiteURL }}` without a recovery token, change it back
+to `{{ .ConfirmationURL }}`.

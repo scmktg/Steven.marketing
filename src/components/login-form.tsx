@@ -23,7 +23,7 @@ export function LoginForm({ configured, linkError }: { configured: boolean; link
       const supabase = createClient();
       if (mode === "forgot") {
         const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-          redirectTo: `${window.location.origin}/auth/callback?next=/reset-password`
+          redirectTo: `${window.location.origin}/auth/callback`
         });
         if (error) {
           // Don't show a success message when Supabase has rejected the request.
