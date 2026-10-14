@@ -4,6 +4,7 @@ export type AgreementTerms = {
   client_id?: string;
   commission_model: "revenue_growth" | "tiered_revenue_growth" | "manual";
   contract_start_date: string | null;
+  revenue_basis: "net_sales" | "total_sales";
   baseline_monthly_aud: number | null;
   commission_rate: number | null;
   tier_1_limit_aud: number | null;
@@ -16,6 +17,8 @@ export type DailySales = {
   client_id?: string;
   day: string;
   net_sales_aud: number | null;
+  total_sales_aud?: number | null;
+  shipping_charges_aud?: number | null;
   gross_sales_aud?: number | null;
   orders?: number | null;
 };
@@ -29,6 +32,11 @@ export type PeriodResult = {
   expectedDays: number;
   recordedDays: number;
   revenue: number | null;
+  netRevenue: number | null;
+  totalRevenue: number | null;
+  shipping: number | null;
+  orders: number | null;
+  grossRevenue: number | null;
   growth: number | null;
   commission: number | null;
   breakdown: TierResult[];
@@ -86,19 +94,30 @@ export function marginalTiers(growthCents:number,terms:AgreementTerms):TierResul
 function report(start:string,endExclusive:string,term:AgreementTerms,rows:DailySales[],today:string):PeriodResult {
   const asOf=today<moveDay(endExclusive,-1)?today:moveDay(endExclusive,-1);
   const lookup=new Map(rows.map(row=>[row.day,row]));
-  let expectedDays=0,recordedDays=0,totalCents=0;
+  const requiresTotal=term.revenue_basis==="total_sales";
+  let expectedDays=0,recordedDays=0,netDays=0,totalDays=0,grossDays=0,shippingDays=0,ordersDays=0;
+  let netCents=0,totalCents=0,grossCents=0,shippingCents=0,orders=0;
   for(let day=start;day<=asOf;day=moveDay(day,1)){
     expectedDays++;
     const record=lookup.get(day);
-    if(record&&record.net_sales_aud!==null&&Number.isFinite(Number(record.net_sales_aud))){
-      totalCents+=cents(Number(record.net_sales_aud));
-      recordedDays++;
-    }
+    if(!record)continue;
+    const isValid=(x:number|null|undefined):x is number=>x!==null&&x!==undefined&&Number.isFinite(Number(x));
+    if(isValid(record.net_sales_aud)){netDays++;netCents+=cents(Number(record.net_sales_aud));}
+    if(isValid(record.total_sales_aud)){totalDays++;totalCents+=cents(Number(record.total_sales_aud));}
+    if(isValid(record.shipping_charges_aud)){shippingDays++;shippingCents+=cents(Number(record.shipping_charges_aud));}
+    if(isValid(record.gross_sales_aud)){grossDays++;grossCents+=cents(Number(record.gross_sales_aud));}
+    if(isValid(record.orders)){ordersDays++;orders+=Number(record.orders);}
+    if(isValid(record.net_sales_aud)&&(!requiresTotal||isValid(record.total_sales_aud)))recordedDays++;
   }
   const coverageComplete=expectedDays>0&&expectedDays===recordedDays;
-  const revenue=coverageComplete?aud(totalCents):null;
+  const netRevenue=netDays===expectedDays&&expectedDays>0?aud(netCents):null;
+  const totalRevenue=totalDays===expectedDays&&expectedDays>0?aud(totalCents):null;
+  const shipping=shippingDays===expectedDays&&expectedDays>0?aud(shippingCents):null;
+  const grossRevenue=grossDays===expectedDays&&expectedDays>0?aud(grossCents):null;
+  const orderCount=ordersDays===expectedDays&&expectedDays>0?orders:null;
+  const revenue=coverageComplete?(requiresTotal?totalRevenue:netRevenue):null;
   const baseline=term.baseline_monthly_aud===null?null:Number(term.baseline_monthly_aud);
-  const growth=baseline!==null&&revenue!==null&&Number.isFinite(baseline)?aud(Math.max(0,totalCents-cents(baseline))):null;
+  const growth=baseline!==null&&revenue!==null&&Number.isFinite(baseline)?aud(Math.max(0,cents(revenue)-cents(baseline))):null;
   let commission:number|null=null;
   let breakdown:TierResult[]=[];
   if(growth!==null&&term.commission_model==="tiered_revenue_growth"){
@@ -109,7 +128,9 @@ function report(start:string,endExclusive:string,term:AgreementTerms,rows:DailyS
     if(term.commission_rate!==null&&Number.isFinite(rate)&&rate>=0&&rate<=1)
       commission=aud(Math.round(cents(growth)*rate));
   }
-  return {start,end:moveDay(endExclusive,-1),endExclusive,isCurrent:today<endExclusive,coverageComplete,expectedDays,recordedDays,revenue,growth,commission,breakdown,asOf};
+  return {start,end:moveDay(endExclusive,-1),endExclusive,isCurrent:today<endExclusive,
+    coverageComplete,expectedDays,recordedDays,revenue,netRevenue,totalRevenue,
+    shipping,orders:orderCount,grossRevenue,growth,commission,breakdown,asOf};
 }
 export function contractHistory(term:AgreementTerms|null,rows:DailySales[],today=sydneyToday(),limit=6):PeriodResult[] {
   if(!term?.contract_start_date||!validDate(term.contract_start_date)||!validDate(today)||today<term.contract_start_date)return [];
