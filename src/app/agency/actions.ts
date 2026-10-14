@@ -27,7 +27,7 @@ export async function createAgencyClient(data: FormData) {
   const slug = clean(data,"slug").toLowerCase();
   if (!name || name.length > 120 || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug) || slug.length > 80) finish("clients",false);
   const {data:created,error}=await supabase.from("clients").insert({name,slug}).select("id").single();
-  if(error||!created)finish("clients",false);
+  if(error||!created)return finish("clients",false);
   revalidatePath("/agency","layout");
   redirect("/agency/advertising?client="+encodeURIComponent(created.id)+"&success=1");
 }
