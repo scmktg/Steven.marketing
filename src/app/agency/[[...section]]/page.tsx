@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { SignOut } from "@/components/sign-out";
 import { requireAgencyAdmin } from "@/lib/agency-auth";
+import { contractHistory, sydneyToday, type AgreementTerms, type DailySales } from "@/lib/commission";
 import { createAgencyClient, saveAgencyTerms, assignClientMember, removeClientMember, addAgencyInvoice } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +11,7 @@ export const metadata = { title:"Agency dashboard | steven.marketing", robots:{i
 
 type Section = "overview" | "clients" | "sales" | "advertising" | "commissions" | "invoices";
 type Client = { id:string; name:string; slug:string };
-type Terms = {client_id:string;commission_model:"revenue_growth"|"manual";baseline_monthly_aud:number|null;commission_rate:number|null};
+type Terms = AgreementTerms & {client_id:string};
 type Metrics = {client_id:string;month:string;gross_sales_aud:number|null;net_sales_aud:number|null;orders:number|null;ad_spend_aud:number|null;shopify_synced_at:string|null;ads_synced_at:string|null};
 type Invoice = {id:string;client_id:string;number:string;amount_aud:number;status:string;issued_on:string|null;due_on:string|null;hosted_invoice_url:string|null};
 type Membership = {client_id:string;user_id:string;role:string};
@@ -60,19 +61,21 @@ export default async function AgencyPage({params,searchParams}:{
   const {supabase}=await requireAgencyAdmin();
   const query=await searchParams;
 
-  const [clientsResponse,termsResponse,metricsResponse,invoicesResponse,membershipsResponse]=await Promise.all([
+  const [clientsResponse,termsResponse,metricsResponse,invoicesResponse,membershipsResponse,dailyResponse]=await Promise.all([
     supabase.from("clients").select("id,name,slug").order("name").limit(200),
-    supabase.from("client_terms").select("client_id,commission_model,baseline_monthly_aud,commission_rate").limit(200),
+    supabase.from("client_terms").select("client_id,commission_model,contract_start_date,baseline_monthly_aud,commission_rate,tier_1_limit_aud,tier_2_limit_aud,tier_1_rate,tier_2_rate,tier_3_rate").limit(200),
     supabase.from("client_monthly_metrics").select("client_id,month,gross_sales_aud,net_sales_aud,orders,ad_spend_aud,shopify_synced_at,ads_synced_at").order("month",{ascending:false}).limit(1000),
     supabase.from("client_invoices").select("id,client_id,number,amount_aud,status,issued_on,due_on,hosted_invoice_url").order("issued_on",{ascending:false,nullsFirst:false}).limit(200),
-    supabase.from("client_memberships").select("client_id,user_id,role").limit(500)
+    supabase.from("client_memberships").select("client_id,user_id,role").limit(500),
+    supabase.from("client_daily_sales").select("client_id,day,net_sales_aud").gte("day", new Date(Date.now()-270*86400000).toISOString().slice(0,10)).order("day",{ascending:false}).limit(1000)
   ]);
-  const failed=Boolean(clientsResponse.error||termsResponse.error||metricsResponse.error||invoicesResponse.error||membershipsResponse.error);
+  const failed=Boolean(clientsResponse.error||termsResponse.error||metricsResponse.error||invoicesResponse.error||membershipsResponse.error||dailyResponse.error);
   const clients=(clientsResponse.data||[]) as Client[];
   const terms=(termsResponse.data||[]) as Terms[];
   const allMetrics=(metricsResponse.data||[]) as Metrics[];
   const allInvoices=(invoicesResponse.data||[]) as Invoice[];
   const memberships=(membershipsResponse.data||[]) as Membership[];
+  const dailySales=(dailyResponse.data||[]) as DailySales[];
   const selected=query.client && clients.some(c=>c.id===query.client)?query.client:undefined;
   if(query.client && !selected) notFound();
   const filteredClients=selected?clients.filter(c=>c.id===selected):clients;
@@ -82,11 +85,16 @@ export default async function AgencyPage({params,searchParams}:{
   const spendKnown=month.filter(m=>m.ad_spend_aud!==null);
   const netTotal=salesKnown.length?salesKnown.reduce((n,x)=>n+Number(x.net_sales_aud),0):null;
   const spendTotal=spendKnown.length?spendKnown.reduce((n,x)=>n+Number(x.ad_spend_aud),0):null;
-  const estimates=month.map(row=>{
-    const contract=terms.find(t=>t.client_id===row.client_id);
-    if(!contract||contract.commission_model!=="revenue_growth"||row.net_sales_aud===null||contract.baseline_monthly_aud===null||contract.commission_rate===null) return null;
-    return {client_id:row.client_id,value:Math.max(0,Number(row.net_sales_aud)-Number(contract.baseline_monthly_aud))*Number(contract.commission_rate)};
-  }).filter((x):x is {client_id:string;value:number}=>x!==null);
+  const today = sydneyToday();
+  const histories = new Map(filteredClients.map(client => {
+    const agreement = terms.find(t=>t.client_id===client.id) ?? null;
+    const clientDays=dailySales.filter(d=>d.client_id===client.id);
+    return [client.id, contractHistory(agreement,clientDays,today)] as const;
+  }));
+  const estimates=filteredClients.flatMap(c=>{
+    const active=histories.get(c.id)?.[0];
+    return active&&active.commission!==null ? [{client_id:c.id,value:active.commission}] : [];
+  });
   const estimated=estimates.length?estimates.reduce((n,x)=>n+x.value,0):null;
   const relevantInvoices=allInvoices.filter(i=>clientIds.has(i.client_id));
   const relevantMetrics=allMetrics.filter(m=>clientIds.has(m.client_id));
@@ -150,21 +158,68 @@ export default async function AgencyPage({params,searchParams}:{
           <Panel eyebrow="CAMPAIGNS" title="Google Ads reporting">{relevantMetrics.some(m=>m.ad_spend_aud!==null)?<Table titles={["Client","Month","Ad spend","Last synced"]} rows={relevantMetrics.filter(m=>m.ad_spend_aud!==null).map(m=>[lookup(m.client_id),monthName(m.month),aud(m.ad_spend_aud),shortDate(m.ads_synced_at)])}/>:<Empty title="No advertising data yet" description="Authorise advertising account syncs before reporting real spending."/>}<p className="panel-footnote">Spend is not automatically attributed to Shopify revenue. Report attribution separately.</p></Panel>
         </>}
         {sectionKey==="commissions"&&<>
-          <div className="kpi-grid three"><Stat featured label="Provisional portfolio commission" value={aud(estimated)}/><Stat label="Contracts configured" value={whole(filteredClients.filter(c=>terms.some(t=>t.client_id===c.id)).length)}/><Stat label="Pending agreements" value={whole(filteredClients.filter(c=>!terms.some(t=>t.client_id===c.id)).length)}/></div>
+          <div className="kpi-grid three">
+            <Stat featured label="Current contract-period commissions" value={aud(estimated)} note="Provisional · per-client anniversary periods"/>
+            <Stat label="Contracts configured" value={whole(filteredClients.filter(c=>terms.some(t=>t.client_id===c.id)).length)}/>
+            <Stat label="Pending agreements" value={whole(filteredClients.filter(c=>!terms.some(t=>t.client_id===c.id)).length)}/>
+          </div>
           <Panel eyebrow="CONTRACTS" title="Commission agreements">
             {filteredClients.map(c=>{
               const agreement=terms.find(t=>t.client_id===c.id);
-              const m=month.find(row=>row.client_id===c.id);
-              return <div className="agency-agreement" key={c.id}><div className="agency-agreement-header"><h3>{c.name}</h3><p>Net revenue: {aud(m?.net_sales_aud)} · Estimated commission: {aud(estimates.find(e=>e.client_id===c.id)?.value)}</p></div>
-                <form className="agency-form" action={saveAgencyTerms}><input type="hidden" name="client_id" value={c.id}/>
-                  <label className="agency-field"><span>Calculation model</span><select name="commission_model" defaultValue={agreement?.commission_model||"revenue_growth"}><option value="revenue_growth">Growth above monthly baseline</option><option value="manual">Custom / manually reconciled</option></select></label>
-                  <Field type="number" label="Monthly baseline (AUD)" name="baseline_aud" min="0" step="0.01" placeholder="0.00" defaultValue={agreement?.baseline_monthly_aud??""}/>
-                  <Field type="number" label="Commission rate (%)" name="commission_percentage" min="0" step="0.001" placeholder="e.g. 15" defaultValue={agreement?.commission_rate===null||agreement?.commission_rate===undefined?"":Number(agreement.commission_rate)*100}/>
-                  <button className="login-action agency-save" type="submit">Save agreement →</button>
-                </form></div>;
+              const history=histories.get(c.id)||[];
+              const currentPeriod=history[0];
+              const isTiered=agreement?.commission_model==="tiered_revenue_growth";
+              const defaultTiered=c.slug==="enviro-aqua"&&!agreement;
+              return <div className="agency-agreement" key={c.id}>
+                <div className="agency-agreement-header">
+                  <h3>{c.name}</h3>
+                  <p>{currentPeriod ? `Contract period: ${shortDate(currentPeriod.start)} – ${shortDate(currentPeriod.end)} · Revenue: ${aud(currentPeriod.revenue)} · Commission: ${aud(currentPeriod.commission)}` : "Enter the signed commencement date and baseline to activate contract-period reporting."}</p>
+                </div>
+                <form className="agency-form" action={saveAgencyTerms}>
+                  <input type="hidden" name="client_id" value={c.id}/>
+                  <label className="agency-field"><span>Calculation model</span>
+                    <select name="commission_model" defaultValue={agreement?.commission_model||(defaultTiered?"tiered_revenue_growth":"revenue_growth")}>
+                      <option value="tiered_revenue_growth">Tiered growth · marginal percentages</option>
+                      <option value="revenue_growth">Growth · single percentage</option>
+                      <option value="manual">Custom / manually reconciled</option>
+                    </select>
+                  </label>
+                  <Field type="date" label="Contract commencement date" name="contract_start_date" defaultValue={agreement?.contract_start_date||""}/>
+                  <Field type="number" label="Fixed monthly baseline (AUD)" name="baseline_aud" min="0" step="0.01" placeholder="Agreed baseline" defaultValue={agreement?.baseline_monthly_aud??""}/>
+                  <Field type="number" label="Single rate (%) · flat model only" name="commission_percentage" min="0" step="0.001" placeholder="For single-rate contracts" defaultValue={agreement?.commission_rate===null||agreement?.commission_rate===undefined?"":Number(agreement.commission_rate)*100}/>
+                  <Field type="number" label="Tier 1 cap above baseline (AUD)" name="tier_1_cap_aud" min="0.01" step="0.01" defaultValue={agreement?.tier_1_limit_aud??20000}/>
+                  <Field type="number" label="Tier 1 rate (%)" name="tier_1_percentage" min="0" step="0.001" defaultValue={agreement?.tier_1_rate===null||agreement?.tier_1_rate===undefined?12:Number(agreement.tier_1_rate)*100}/>
+                  <Field type="number" label="Tier 2 cumulative cap (AUD)" name="tier_2_cap_aud" min="0.01" step="0.01" defaultValue={agreement?.tier_2_limit_aud??50000}/>
+                  <Field type="number" label="Tier 2 rate (%)" name="tier_2_percentage" min="0" step="0.001" defaultValue={agreement?.tier_2_rate===null||agreement?.tier_2_rate===undefined?10:Number(agreement.tier_2_rate)*100}/>
+                  <Field type="number" label="Tier 3 rate (%) · above tier 2" name="tier_3_percentage" min="0" step="0.001" defaultValue={agreement?.tier_3_rate===null||agreement?.tier_3_rate===undefined?8:Number(agreement.tier_3_rate)*100}/>
+                  <button className="login-action agency-save" type="submit">Save commission agreement →</button>
+                </form>
+                <p className="agency-caption">Rates apply marginally to each revenue band, not retrospectively to the entire amount. Monthly periods begin on the contract commencement date; the day before the next anniversary ends each period. No commission is calculated without complete daily sales coverage.</p>
+                {currentPeriod&&<>
+                  <div className="agency-period-report">
+                    <div className="agency-period-summary">
+                      <strong>{shortDate(currentPeriod.start)} – {shortDate(currentPeriod.end)}</strong>
+                      <span>{currentPeriod.coverageComplete?`As at ${shortDate(currentPeriod.asOf)} · ${currentPeriod.isCurrent?"In progress":"Completed, provisional"}`:`Sales data incomplete (${currentPeriod.recordedDays}/${currentPeriod.expectedDays} days)`}</span>
+                    </div>
+                    <div className="agreement-list">
+                      <div><span>Contract-period net revenue</span><strong>{aud(currentPeriod.revenue)}</strong></div>
+                      <div><span>Fixed monthly baseline</span><strong>{aud(agreement?.baseline_monthly_aud)}</strong></div>
+                      <div><span>Revenue above baseline</span><strong>{aud(currentPeriod.growth)}</strong></div>
+                      {isTiered&&currentPeriod.breakdown.map((tier,i)=><div key={i}><span>{tier.label} at {percentage(tier.rate)}</span><strong>{aud(tier.commission)}</strong></div>)}
+                      <div className="agreement-total"><span>Estimated commission</span><strong>{aud(currentPeriod.commission)}</strong></div>
+                    </div>
+                  </div>
+                  <div className="agency-period-history"><h4>Contract period history</h4>
+                  <Table titles={["Period","Eligible revenue","Above baseline","Commission","Status"]} rows={history.map(period=>[
+                    `${shortDate(period.start)} – ${shortDate(period.end)}`,
+                    aud(period.revenue), aud(period.growth), aud(period.commission),
+                    period.coverageComplete?period.isCurrent?"In progress":"Provisional":"Awaiting daily sales"
+                  ])}/></div>
+                </>}
+              </div>;
             })}
             {!filteredClients.length&&<Empty title="No clients" description="Create a client before configuring commission terms."/>}
-            <p className="panel-footnote">These are estimated terms. A signed agreement defines all billing exclusions, GST treatment, refunds, adjustments and final commission liability.</p>
+            <p className="panel-footnote">Contracts, refunds, GST, adjustments and final settlement govern amounts payable. These are provisional estimates, not automatically issued invoices.</p>
           </Panel>
         </>}
         {sectionKey==="invoices"&&<>
