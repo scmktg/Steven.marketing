@@ -143,7 +143,13 @@ export default async function AgencyPage({params,searchParams}:{
   });
   const calendarShipping=calendarShippingParts.length>0&&calendarShippingParts.every(x=>x.complete)
     ?calendarShippingParts.reduce((sum,x)=>sum+x.amount,0):null;
-  const calendarShopifyTotal=calendarShipping!==null&&netTotal!==null?netTotal+calendarShipping:null;
+  const calendarTotalParts=filteredClients.map(c=>{
+    const through=Number(today.slice(8,10));
+    const records=dailySales.filter(d=>d.client_id===c.id&&d.day>=calendarStarts&&d.day<=today&&d.total_sales_aud!==null&&d.total_sales_aud!==undefined);
+    return {complete:records.length===through,amount:records.reduce((sum,d)=>sum+Number(d.total_sales_aud),0)};
+  });
+  const calendarShopifyTotal=calendarTotalParts.length>0&&calendarTotalParts.every(x=>x.complete)
+    ?Math.round(calendarTotalParts.reduce((sum,x)=>sum+x.amount,0)*100)/100:null;
   const cardsForOverview:Record<OverviewCard,{label:string;value:string;note:string}>={
     revenue:{
       label:overviewMode==="contract"?"Contract-period eligible revenue":"Calendar-month net product sales",
