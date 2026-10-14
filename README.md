@@ -82,3 +82,13 @@ The original schema lives at `supabase/schema.sql`. The agency role migration is
 ### Controls
 
 The current administrator privileges are intentionally limited to customer workspaces, agreements, memberships and invoice records. Account invitations remain in Supabase Auth, and the agency role itself is granted manually in SQL. Client metrics can only be written by a privileged ingestion process, not by the browser. Commission figures are estimates, not billable invoices.
+
+### Supabase invited-user email template
+
+For new passwordless invitations to transition to a password-protected account, update **Authentication → Email Templates → Invite user** so the action link points to:
+
+```html
+<a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=invite">Accept invitation</a>
+```
+
+The server verifies the one-time token through Supabase and sends the invited person to `/reset-password` to set their password. If you use the default `{{ .ConfirmationURL }}` email instead, Supabase may redirect to the homepage without a usable password-setup flow, so configure and test invitations before launching. The same route accepts `type=recovery` if recovery templates are later customised. Never publish invitation tokens in logs or GitHub.
