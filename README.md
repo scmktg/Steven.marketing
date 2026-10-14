@@ -50,3 +50,35 @@ Node 20+. `npm install`, `npm run build`, `npm run dev`. Use `.env.example` as a
 ## Security
 
 All private data loading is server-side and requires validated Auth claims. Supabase RLS restricts each table to authorised members of that client. Public users cannot self-register or mutate client metrics through the Data API. Do not copy sample credentials, real customer data or secrets into the repository. Perform a multi-tenant authorization test before launch.
+
+## Agency administrator experience
+
+### Role separation
+
+The same `/login` supports client and agency logins. A Supabase Auth user with a row in `public.agency_admins` is automatically routed from `/dashboard` to `/agency`. Only agency administrators can access `/agency`; clients without this role remain in `/dashboard` and can only see rows of clients they belong to through `client_memberships`. No `user_metadata` value confers any privileges.
+
+The agency dashboard provides portfolio-wide metrics, client workspace creation, per-client commission terms, membership assignment/revocation, and recording issued invoices with optional hosted payment links. Shopify / Google Ads ingestion, invoice generation and account invitation delivery are separate integrations (not simulated here).
+
+### Bootstrap first administrator — explicit manual step
+
+1. In **Supabase Authentication → Users**, invite your agency administrator email and complete its account activation. Do not use a client contact's email for this privileged role.
+2. In the **Supabase SQL Editor**, run the following only after confirming the correct agency account email and matching Auth user ID:
+
+```sql
+insert into public.agency_admins (user_id)
+select id from auth.users
+where lower(email) = lower('REPLACE-WITH-YOUR-OWN-AGENCY-EMAIL')
+  and email_confirmed_at is not null
+on conflict (user_id) do nothing;
+```
+
+3. Sign in at `https://steven.marketing/login`; the account should land on `/agency`. **Agency privileges are not granted simply by signing up.** The `agency_admins` table has no client-side insert/update/delete grants or policies.
+4. Client invitations still go through Supabase Authentication → Users. Use the resulting **Supabase Auth User ID** in Agency → Clients → Team members to grant access to the correct client.
+
+### Database migrations
+
+The original schema lives at `supabase/schema.sql`. The agency role migration is recorded at `supabase/migrations/20261014_create_agency_admin_roles.sql` and has already been applied to the project's database. Do not reapply named policies a second time to the same project.
+
+### Controls
+
+The current administrator privileges are intentionally limited to customer workspaces, agreements, memberships and invoice records. Account invitations remain in Supabase Auth, and the agency role itself is granted manually in SQL. Client metrics can only be written by a privileged ingestion process, not by the browser. Commission figures are estimates, not billable invoices.

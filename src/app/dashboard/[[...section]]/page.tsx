@@ -69,6 +69,9 @@ export default async function Dashboard({ params, searchParams }: {
   const supabase = await createClient();
   const { data: verified, error: authError } = await supabase.auth.getClaims();
   if (authError || !verified?.claims?.sub) redirect("/login");
+  const { data: admin } = await supabase.from("agency_admins")
+    .select("user_id").eq("user_id",verified.claims.sub).maybeSingle();
+  if (admin) redirect("/agency");
 
   const { data: membershipRows, error: memberError } = await supabase.from("client_memberships")
     .select("client_id, role, clients (id, name, slug)")

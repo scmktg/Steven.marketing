@@ -4,7 +4,7 @@ import { portalConfigured, portalCredentials } from "./lib/supabase/config";
 
 export async function middleware(request: NextRequest) {
   if (!portalConfigured()) {
-    if (request.nextUrl.pathname.startsWith("/dashboard")) {
+    if ((request.nextUrl.pathname.startsWith("/dashboard") || request.nextUrl.pathname.startsWith("/agency"))) {
       return NextResponse.redirect(new URL("/login", request.url));
     }
     return NextResponse.next();
@@ -26,7 +26,7 @@ export async function middleware(request: NextRequest) {
 
   // Verify authentication cryptographically: never trust the cookie/session contents.
   const { data } = await supabase.auth.getClaims();
-  if (!data?.claims && request.nextUrl.pathname.startsWith("/dashboard")) {
+  if (!data?.claims && (request.nextUrl.pathname.startsWith("/dashboard") || request.nextUrl.pathname.startsWith("/agency"))) {
     const redirect = NextResponse.redirect(new URL("/login", request.url));
     redirect.headers.set("Cache-Control", "private, no-store");
     return redirect;
@@ -37,5 +37,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/login", "/auth/:path*", "/reset-password"]
+  matcher: ["/dashboard/:path*", "/agency/:path*", "/login", "/auth/:path*", "/reset-password"]
 };
