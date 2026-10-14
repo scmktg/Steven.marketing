@@ -112,8 +112,7 @@ export async function saveAgencyOverviewPreferences(data: FormData) {
 // Agreement editing is deliberately draft-only. No SignWell sends, client
 // memberships, invoice changes or signed-contract mutations occur here.
 const validateAgreementBody=(value:string)=>value.length>=400&&value.length<=80000&&
-  value.includes("SCHEDULE A")&&value.includes("SCHEDULE B")&&
-  value.includes("13. Limited post-termination");
+  value.includes("SCHEDULE A")&&value.includes("SCHEDULE B");
 
 export async function saveAgencyAgreementMaster(data:FormData) {
   const {supabase,userId}=await requireAgencyAdmin();
