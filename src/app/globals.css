@@ -63,3 +63,26 @@
 .agency-kpi-grid .kpi-value{white-space:normal;overflow-wrap:anywhere;font-size:clamp(22px,2vw,31px)}
 @media(max-width:840px){.agency-overview-card-choices>div{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:570px){.agency-overview-card-choices>div{grid-template-columns:1fr}.agency-overview-period{display:block}.agency-kpi-grid{grid-template-columns:1fr}}
+
+
+/* Agreement editing is deliberately administrative and unsigned. */
+.agency-legal-warning{border:1px solid #e4dfd4;background:#fdfbf7;border-radius:12px;padding:19px 22px;margin-bottom:22px}
+.agency-legal-warning strong{font-size:11px;letter-spacing:.07em;color:#5c4939}
+.agency-legal-warning p{font-size:12px;color:#695f52;line-height:1.75;margin:8px 0 0}
+.agency-agreement-editor{display:flex;flex-direction:column;gap:12px;margin:22px 0}
+.agency-agreement-editor label{display:flex;flex-direction:column;gap:5px;font-size:12px}
+.agency-agreement-editor label strong{font-weight:600;color:#222}
+.agency-agreement-editor label span{font-size:11px;color:#888}
+.agency-agreement-editor textarea{resize:vertical;width:100%;min-height:310px;border:1px solid #e5e5e5;border-radius:9px;background:#fff;color:#222;font-size:12px;line-height:1.7;padding:20px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}
+.agency-agreement-editor textarea:focus{outline:2px solid #cfcfcf;outline-offset:2px}
+.agency-agreement-preview-toggle{border:1px solid #e7e7e7;border-radius:10px;margin:18px 0}
+.agency-agreement-preview-toggle summary{font-size:12px;font-weight:600;cursor:pointer;padding:17px 20px}
+.agency-agreement-preview-toggle[open] summary{border-bottom:1px solid #eee}
+.agency-contract-preview{font-size:12px;line-height:1.8;padding:20px;max-height:650px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere}
+.agency-contract-preview h2{font-size:19px;line-height:1.35;margin:20px 0 9px;font-weight:650}
+.agency-contract-preview h3{font-size:13px;line-height:1.5;margin:18px 0 9px;font-weight:650}
+.agency-contract-preview p{font-size:12px;color:#505050;margin:0 0 8px}
+.agency-contract-preview .agency-contract-todo{color:#8d512b}
+.agency-contract-spacer{height:8px}
+.agency-contract-status{font-size:12px;color:#695f52;background:#faf8f4;border:1px solid #eee6db;border-radius:8px;padding:12px 14px;margin:15px 0}
+.agency-contract-status strong{font-size:13px;font-weight:600}
