@@ -201,7 +201,7 @@ export default async function AgencyPage({params,searchParams}:{
     shipping:{
       label:overviewMode==="contract"?"Shipping · contract periods":"Shipping · calendar month",
       value:aud(overviewMode==="contract"?summedContract("shipping"):calendarShipping),
-      note:"Not automatically commissionable for every client"
+      note:"Shipping charged to customers · not courier expense"
     },
     growth:{
       label:"Growth above agreed baseline",
@@ -221,7 +221,7 @@ export default async function AgencyPage({params,searchParams}:{
     ad_spend:{
       label:"Google Ads · calendar-month spend",
       value:aud(spendTotal),
-      note:"Calendar-month spend; daily ad spend not yet connected"
+      note:"Calendar-month snapshot · contract spend shown separately"
     }
   };
 
