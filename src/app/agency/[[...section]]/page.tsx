@@ -463,7 +463,7 @@ export default async function AgencyPage({params,searchParams}:{
             <strong>DRAFT — INDEPENDENT LEGAL REVIEW REQUIRED</strong>
             <p>These are editable proposals only. Nothing on this page sends a SignWell request, grants dashboard access or modifies a signed agreement. All commercial and termination clauses require Australian legal review before use.</p>
           </div>
-          <Panel eyebrow="MASTER TEMPLATE" title="Marketing Services & Performance Commission Agreement">
+          <Panel eyebrow="MASTER TEMPLATE" title={agreementMaster?.title||"Marketing Partnership Agreement"}>
             {agreementMaster?<>
               <p className="agency-caption">Master version {agreementMaster.version} · last updated {shortDate(agreementMaster.updated_at)}. Editing the master does not overwrite a client's separately saved draft or any future signed agreement.</p>
               <form action={saveAgencyAgreementMaster} className="agency-agreement-editor">
