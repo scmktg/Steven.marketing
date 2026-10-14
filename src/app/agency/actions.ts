@@ -38,7 +38,7 @@ export async function saveAgencyTerms(data: FormData) {
   if (!["tiered_revenue_growth","revenue_growth","manual"].includes(model)) finish("commissions",false,clientId);
 
   const start = clean(data,"contract_start_date");
-  if(start && (!validDate(start) || start > new Date(Date.now()+86400000).toISOString().slice(0,10)))
+  if(start && !validDate(start))
     finish("commissions",false,clientId);
   const number = (name:string,allowBlank=true): number | null => {
     const value=clean(data,name);
