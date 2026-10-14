@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { SignOut } from "@/components/sign-out";
 import { requireAgencyAdmin } from "@/lib/agency-auth";
-import { contractHistory, sydneyToday, type AgreementTerms, type DailySales } from "@/lib/commission";
+import { contractHistory, sydneyToday, adSpendForPeriod, revenueAfterDeductions, type AgreementTerms, type DailySales, type DailyAdSpend } from "@/lib/commission";
 import { createAgencyClient, saveAgencyTerms, assignClientMember, removeClientMember, addAgencyInvoice, saveAgencyOverviewPreferences } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -15,16 +15,18 @@ type Terms = AgreementTerms & {client_id:string};
 type Metrics = {client_id:string;month:string;gross_sales_aud:number|null;net_sales_aud:number|null;orders:number|null;ad_spend_aud:number|null;shopify_synced_at:string|null;ads_synced_at:string|null};
 type Invoice = {id:string;client_id:string;number:string;amount_aud:number;status:string;issued_on:string|null;due_on:string|null;hosted_invoice_url:string|null};
 type Membership = {client_id:string;user_id:string;role:string};
-type OverviewCard = "revenue" | "total_sales" | "net_sales" | "gross_sales" | "shipping" | "growth" | "commission" | "orders" | "ad_spend";
+type OverviewCard = "revenue_after_costs" | "contract_ad_spend" | "revenue" | "total_sales" | "net_sales" | "gross_sales" | "shipping" | "growth" | "commission" | "orders" | "ad_spend";
 type OverviewMode = "contract" | "calendar";
 const overviewOptions: {key:OverviewCard;label:string}[] = [
+  {key:"revenue_after_costs",label:"Revenue after commission, ads & shipping"},
+  {key:"contract_ad_spend",label:"Google Ads · contract period"},
   {key:"revenue",label:"Eligible revenue"},{key:"total_sales",label:"Shopify total sales"},
   {key:"net_sales",label:"Net product sales"},{key:"gross_sales",label:"Gross product sales"},
   {key:"shipping",label:"Shipping charges"},{key:"growth",label:"Growth above baseline"},
   {key:"commission",label:"Estimated commission"},{key:"orders",label:"Order count"},
   {key:"ad_spend",label:"Advertising spend (calendar month)"}
 ];
-const initialCards:OverviewCard[]=["revenue","total_sales","net_sales","growth","commission","orders","ad_spend"];
+const initialCards:OverviewCard[]=["revenue_after_costs","revenue","total_sales","shipping","growth","commission","contract_ad_spend","ad_spend"];
 const sections: {key:Section;label:string;icon:string}[]=[
   {key:"overview",label:"Overview",icon:"◫"},
   {key:"clients",label:"Clients",icon:"◎"},
@@ -71,22 +73,24 @@ export default async function AgencyPage({params,searchParams}:{
   const {supabase,userId}=await requireAgencyAdmin();
   const query=await searchParams;
 
-  const [clientsResponse,termsResponse,metricsResponse,invoicesResponse,membershipsResponse,dailyResponse,prefsResponse]=await Promise.all([
+  const [clientsResponse,termsResponse,metricsResponse,invoicesResponse,membershipsResponse,dailyResponse,adsDailyResponse,prefsResponse]=await Promise.all([
     supabase.from("clients").select("id,name,slug").order("name").limit(200),
     supabase.from("client_terms").select("client_id,commission_model,contract_start_date,revenue_basis,baseline_monthly_aud,commission_rate,tier_1_limit_aud,tier_2_limit_aud,tier_1_rate,tier_2_rate,tier_3_rate").limit(200),
     supabase.from("client_monthly_metrics").select("client_id,month,gross_sales_aud,net_sales_aud,orders,ad_spend_aud,shopify_synced_at,ads_synced_at").order("month",{ascending:false}).limit(1000),
     supabase.from("client_invoices").select("id,client_id,number,amount_aud,status,issued_on,due_on,hosted_invoice_url").order("issued_on",{ascending:false,nullsFirst:false}).limit(200),
     supabase.from("client_memberships").select("client_id,user_id,role").limit(500),
     supabase.from("client_daily_sales").select("client_id,day,net_sales_aud,gross_sales_aud,total_sales_aud,shipping_charges_aud,orders").gte("day", new Date(Date.now()-270*86400000).toISOString().slice(0,10)).order("day",{ascending:false}).limit(1000),
+    supabase.from("client_daily_ad_spend").select("client_id,day,ads_account_id,ad_spend_aud").gte("day",new Date(Date.now()-270*86400000).toISOString().slice(0,10)).order("day",{ascending:false}).limit(1000),
     supabase.from("agency_dashboard_preferences").select("overview_mode,visible_cards").eq("user_id",userId).maybeSingle()
   ]);
-  const failed=Boolean(clientsResponse.error||termsResponse.error||metricsResponse.error||invoicesResponse.error||membershipsResponse.error||dailyResponse.error||prefsResponse.error);
+  const failed=Boolean(clientsResponse.error||termsResponse.error||metricsResponse.error||invoicesResponse.error||membershipsResponse.error||dailyResponse.error||adsDailyResponse.error||prefsResponse.error);
   const clients=(clientsResponse.data||[]) as Client[];
   const terms=(termsResponse.data||[]) as Terms[];
   const allMetrics=(metricsResponse.data||[]) as Metrics[];
   const allInvoices=(invoicesResponse.data||[]) as Invoice[];
   const memberships=(membershipsResponse.data||[]) as Membership[];
   const dailySales=(dailyResponse.data||[]) as DailySales[];
+  const dailyAds=(adsDailyResponse.data||[]) as DailyAdSpend[];
   const overviewMode:OverviewMode=prefsResponse.data?.overview_mode==="calendar"?"calendar":"contract";
   const configuredCards=Array.isArray(prefsResponse.data?.visible_cards)?prefsResponse.data.visible_cards as string[]:initialCards;
   const visibleCards=overviewOptions.map(x=>x.key).filter(x=>configuredCards.includes(x));
@@ -105,6 +109,15 @@ export default async function AgencyPage({params,searchParams}:{
     const agreement = terms.find(t=>t.client_id===client.id) ?? null;
     const clientDays=dailySales.filter(d=>d.client_id===client.id);
     return [client.id, contractHistory(agreement,clientDays,today)] as const;
+  }));
+  const adPeriods=new Map(filteredClients.map(client=>{
+    const p=histories.get(client.id)?.[0];
+    return [client.id,p?adSpendForPeriod(p,dailyAds.filter(a=>a.client_id===client.id)):null] as const;
+  }));
+  const remaining=new Map(filteredClients.map(client=>{
+    const p=histories.get(client.id)?.[0];
+    const advertising=adPeriods.get(client.id);
+    return [client.id,p&&advertising?revenueAfterDeductions(p,advertising):null] as const;
   }));
   const estimates=filteredClients.flatMap(c=>{
     const active=histories.get(c.id)?.[0];
@@ -130,6 +143,10 @@ export default async function AgencyPage({params,searchParams}:{
     if(!allCovered||contracted.some(c=>c.period[metric]===null))return null;
     return Math.round(contracted.reduce((sum,c)=>sum+Number(c.period[metric]),0)*100)/100;
   };
+  const completeAds=contracted.length>0&&contracted.every(c=>adPeriods.get(c.client.id)?.coverageComplete);
+  const summedContractAds=completeAds?Math.round(contracted.reduce((sum,c)=>sum+Number(adPeriods.get(c.client.id)?.amount??0),0)*100)/100:null;
+  const completeRemaining=contracted.length>0&&contracted.every(c=>remaining.get(c.client.id)!==null&&remaining.get(c.client.id)!==undefined);
+  const summedRemaining=completeRemaining?Math.round(contracted.reduce((sum,c)=>sum+Number(remaining.get(c.client.id)),0)*100)/100:null;
   const calendarGrossRows=month.filter(m=>m.gross_sales_aud!==null);
   const calendarGross=calendarGrossRows.length===filteredClients.length&&filteredClients.length>0
     ?calendarGrossRows.reduce((sum,m)=>sum+Number(m.gross_sales_aud),0):null;
@@ -151,6 +168,16 @@ export default async function AgencyPage({params,searchParams}:{
   const calendarShopifyTotal=calendarTotalParts.length>0&&calendarTotalParts.every(x=>x.complete)
     ?Math.round(calendarTotalParts.reduce((sum,x)=>sum+x.amount,0)*100)/100:null;
   const cardsForOverview:Record<OverviewCard,{label:string;value:string;note:string}>={
+    revenue_after_costs:{
+      label:"Revenue after commission, ads & shipping",
+      value:aud(summedRemaining),
+      note:"Contract periods · before product, courier & other costs"
+    },
+    contract_ad_spend:{
+      label:"Google Ads · contract periods",
+      value:aud(summedContractAds),
+      note:"Daily Google Ads spend · matched to each contract"
+    },
     revenue:{
       label:overviewMode==="contract"?"Contract-period eligible revenue":"Calendar-month net product sales",
       value:aud(overviewMode==="contract"?summedContract("revenue"):netTotal),
@@ -248,6 +275,8 @@ export default async function AgencyPage({params,searchParams}:{
                 :"Shopify figures use "+monthName(current)+"; contract growth and commissions always use agreement anniversary periods."}</p>
               {overviewMode==="contract"&&contracted.length!==filteredClients.length&&
                 <p className="agency-report-warning">{filteredClients.length-contracted.length} client(s) without a current configured contract period are excluded from contract totals.</p>}
+              {contracted.length>0&&!completeRemaining&&
+                <p className="agency-report-warning">Revenue after deductions is unavailable if any required contract-period sales, commission or daily Google Ads record is missing.</p>}
               {overviewMode==="contract"&&contracted.length>0&&!allCovered&&
                 <p className="agency-report-warning">Some contract periods have incomplete daily data. Incomplete financial totals are hidden rather than underestimated.</p>}
             </div>
@@ -257,6 +286,23 @@ export default async function AgencyPage({params,searchParams}:{
             {shownCards.map((key,i)=><Stat key={key} featured={i===0}
               label={cardsForOverview[key].label} value={cardsForOverview[key].value} note={cardsForOverview[key].note}/>)}
           </div>
+          <Panel eyebrow="NET OF SELECTED DEDUCTIONS" title="Revenue remaining · contract periods"
+            aside={<span className="panel-kicker">NOT ACCOUNTING PROFIT</span>}>
+            {filteredClients.length?<Table titles={["Client","Period","Total sales","Less shipping","Less commission","Less Google Ads","Revenue remaining"]} rows={filteredClients.map(c=>{
+              const period=histories.get(c.id)?.[0];
+              const ads=adPeriods.get(c.id);
+              return [
+                <Link key={c.id} href={path("overview",c.id)} className="table-link">{c.name} ↗</Link>,
+                period?shortDate(period.start)+" – "+shortDate(period.end):"Not configured",
+                aud(period?.totalRevenue),
+                aud(period?.shipping),
+                aud(period?.commission),
+                aud(ads?.amount),
+                <strong key={c.id}>{aud(remaining.get(c.id))}</strong>
+              ];
+            })}/>:<Empty title="No clients" description="Add a client to see contract-period deductions."/>}
+            <p className="panel-footnote">Shopify total sales − shipping charges collected − estimated agency commission − Google Ads cost, for the same contract dates. Shipping is customer shipping revenue, <strong>not actual courier expense</strong>. This does not deduct cost of goods, courier costs, payment fees, other marketing, overhead or applicable taxes. Values remain provisional, and missing daily source data suppresses the result.</p>
+          </Panel>
           <Panel eyebrow="CONTRACT PERIODS" title={selected?"Current client reporting":"All clients · current contract periods"}
             aside={<Link className="panel-link" href={path("commissions",selected)}>Manage agreements →</Link>}>
             {filteredClients.length?<Table titles={["Client","Current contract dates","Commission basis","Eligible revenue","Net products","Shopify total","Growth","Estimated commission","Status"]} rows={filteredClients.map(c=>{
