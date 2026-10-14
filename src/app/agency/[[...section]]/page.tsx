@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { SignOut } from "@/components/sign-out";
 import { requireAgencyAdmin } from "@/lib/agency-auth";
 import { contractHistory, sydneyToday, type AgreementTerms, type DailySales } from "@/lib/commission";
-import { createAgencyClient, saveAgencyTerms, assignClientMember, removeClientMember, addAgencyInvoice } from "../actions";
+import { createAgencyClient, saveAgencyTerms, assignClientMember, removeClientMember, addAgencyInvoice, saveAgencyOverviewPreferences } from "../actions";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title:"Agency dashboard | steven.marketing", robots:{index:false,follow:false} };
@@ -15,6 +15,16 @@ type Terms = AgreementTerms & {client_id:string};
 type Metrics = {client_id:string;month:string;gross_sales_aud:number|null;net_sales_aud:number|null;orders:number|null;ad_spend_aud:number|null;shopify_synced_at:string|null;ads_synced_at:string|null};
 type Invoice = {id:string;client_id:string;number:string;amount_aud:number;status:string;issued_on:string|null;due_on:string|null;hosted_invoice_url:string|null};
 type Membership = {client_id:string;user_id:string;role:string};
+type OverviewCard = "revenue" | "total_sales" | "net_sales" | "gross_sales" | "shipping" | "growth" | "commission" | "orders" | "ad_spend";
+type OverviewMode = "contract" | "calendar";
+const overviewOptions: {key:OverviewCard;label:string}[] = [
+  {key:"revenue",label:"Eligible revenue"},{key:"total_sales",label:"Shopify total sales"},
+  {key:"net_sales",label:"Net product sales"},{key:"gross_sales",label:"Gross product sales"},
+  {key:"shipping",label:"Shipping charges"},{key:"growth",label:"Growth above baseline"},
+  {key:"commission",label:"Estimated commission"},{key:"orders",label:"Order count"},
+  {key:"ad_spend",label:"Advertising spend (calendar month)"}
+];
+const initialCards:OverviewCard[]=["revenue","total_sales","net_sales","growth","commission","orders","ad_spend"];
 const sections: {key:Section;label:string;icon:string}[]=[
   {key:"overview",label:"Overview",icon:"◫"},
   {key:"clients",label:"Clients",icon:"◎"},
@@ -28,7 +38,7 @@ const whole = (n:number|null|undefined)=>n===null||n===undefined?"—":new Intl.
 const shortDate=(s:string|null|undefined)=>s?new Intl.DateTimeFormat("en-AU",{day:"numeric",month:"short",year:"numeric",timeZone:"UTC"}).format(new Date(s.slice(0,10)+"T12:00:00Z")):"—";
 const monthName=(s:string)=>new Intl.DateTimeFormat("en-AU",{month:"short",year:"numeric",timeZone:"UTC"}).format(new Date(s+"T12:00:00Z"));
 const percentage=(n:number|null|undefined)=>n===null||n===undefined?"—":`${(Number(n)*100).toFixed(2)}%`;
-const monthNow=()=>{const now=new Date();return `${now.getUTCFullYear()}-${String(now.getUTCMonth()+1).padStart(2,"0")}-01`;};
+const monthNow=()=>sydneyToday().slice(0,7)+"-01";
 const path=(section:Section,clientId?:string)=>`/agency${section==="overview"?"":"/"+section}${clientId?"?client="+encodeURIComponent(clientId):""}`;
 
 function Stat({label,value,note,featured=false}:{label:string;value:string;note?:string;featured?:boolean}){
@@ -58,24 +68,29 @@ export default async function AgencyPage({params,searchParams}:{
   const area=section?.[0]||"overview";
   if((section?.length||0)>1 || !sections.some(s=>s.key===area))notFound();
   const sectionKey=area as Section;
-  const {supabase}=await requireAgencyAdmin();
+  const {supabase,userId}=await requireAgencyAdmin();
   const query=await searchParams;
 
-  const [clientsResponse,termsResponse,metricsResponse,invoicesResponse,membershipsResponse,dailyResponse]=await Promise.all([
+  const [clientsResponse,termsResponse,metricsResponse,invoicesResponse,membershipsResponse,dailyResponse,prefsResponse]=await Promise.all([
     supabase.from("clients").select("id,name,slug").order("name").limit(200),
-    supabase.from("client_terms").select("client_id,commission_model,contract_start_date,baseline_monthly_aud,commission_rate,tier_1_limit_aud,tier_2_limit_aud,tier_1_rate,tier_2_rate,tier_3_rate").limit(200),
+    supabase.from("client_terms").select("client_id,commission_model,contract_start_date,revenue_basis,baseline_monthly_aud,commission_rate,tier_1_limit_aud,tier_2_limit_aud,tier_1_rate,tier_2_rate,tier_3_rate").limit(200),
     supabase.from("client_monthly_metrics").select("client_id,month,gross_sales_aud,net_sales_aud,orders,ad_spend_aud,shopify_synced_at,ads_synced_at").order("month",{ascending:false}).limit(1000),
     supabase.from("client_invoices").select("id,client_id,number,amount_aud,status,issued_on,due_on,hosted_invoice_url").order("issued_on",{ascending:false,nullsFirst:false}).limit(200),
     supabase.from("client_memberships").select("client_id,user_id,role").limit(500),
-    supabase.from("client_daily_sales").select("client_id,day,net_sales_aud").gte("day", new Date(Date.now()-270*86400000).toISOString().slice(0,10)).order("day",{ascending:false}).limit(1000)
+    supabase.from("client_daily_sales").select("client_id,day,net_sales_aud,gross_sales_aud,total_sales_aud,shipping_charges_aud,orders").gte("day", new Date(Date.now()-270*86400000).toISOString().slice(0,10)).order("day",{ascending:false}).limit(1000),
+    supabase.from("agency_dashboard_preferences").select("overview_mode,visible_cards").eq("user_id",userId).maybeSingle()
   ]);
-  const failed=Boolean(clientsResponse.error||termsResponse.error||metricsResponse.error||invoicesResponse.error||membershipsResponse.error||dailyResponse.error);
+  const failed=Boolean(clientsResponse.error||termsResponse.error||metricsResponse.error||invoicesResponse.error||membershipsResponse.error||dailyResponse.error||prefsResponse.error);
   const clients=(clientsResponse.data||[]) as Client[];
   const terms=(termsResponse.data||[]) as Terms[];
   const allMetrics=(metricsResponse.data||[]) as Metrics[];
   const allInvoices=(invoicesResponse.data||[]) as Invoice[];
   const memberships=(membershipsResponse.data||[]) as Membership[];
   const dailySales=(dailyResponse.data||[]) as DailySales[];
+  const overviewMode:OverviewMode=prefsResponse.data?.overview_mode==="calendar"?"calendar":"contract";
+  const configuredCards=Array.isArray(prefsResponse.data?.visible_cards)?prefsResponse.data.visible_cards as string[]:initialCards;
+  const visibleCards=overviewOptions.map(x=>x.key).filter(x=>configuredCards.includes(x));
+  const shownCards=visibleCards.length?visibleCards:initialCards;
   const selected=query.client && clients.some(c=>c.id===query.client)?query.client:undefined;
   if(query.client && !selected) notFound();
   const filteredClients=selected?clients.filter(c=>c.id===selected):clients;
@@ -101,6 +116,82 @@ export default async function AgencyPage({params,searchParams}:{
   const lookup=(id:string)=>clients.find(c=>c.id===id)?.name||"Unknown client";
   const current=monthNow();
   const chosen=filteredClients[0];
+  // For portfolio totals each client contributes its OWN anniversary period.
+  // We deliberately show no portfolio sum when any configured current period is incomplete.
+  const contracted=filteredClients.flatMap(client=>{
+    const termsForClient=terms.find(t=>t.client_id===client.id);
+    if(!termsForClient?.contract_start_date)return [];
+    const active=histories.get(client.id)?.[0];
+    return active?[{client,contract:termsForClient,period:active}]:[];
+  });
+  const allCovered=contracted.length>0&&contracted.every(c=>c.period.coverageComplete);
+  type PeriodMetric="revenue"|"netRevenue"|"totalRevenue"|"grossRevenue"|"shipping"|"growth"|"commission"|"orders";
+  const summedContract=(metric:PeriodMetric):number|null=>{
+    if(!allCovered||contracted.some(c=>c.period[metric]===null))return null;
+    return Math.round(contracted.reduce((sum,c)=>sum+Number(c.period[metric]),0)*100)/100;
+  };
+  const calendarGrossRows=month.filter(m=>m.gross_sales_aud!==null);
+  const calendarGross=calendarGrossRows.length===filteredClients.length&&filteredClients.length>0
+    ?calendarGrossRows.reduce((sum,m)=>sum+Number(m.gross_sales_aud),0):null;
+  const calendarOrders=month.length===filteredClients.length&&month.every(m=>m.orders!==null)
+    ?month.reduce((sum,m)=>sum+Number(m.orders),0):null;
+  const calendarStarts=current.slice(0,7)+"-01";
+  const calendarShippingParts=filteredClients.map(c=>{
+    const through= Math.min(Number(today.slice(8,10)),31);
+    const existing=dailySales.filter(d=>d.client_id===c.id&&d.day>=calendarStarts&&d.day<=today&&d.shipping_charges_aud!==null);
+    return {complete:existing.length===through,amount:existing.reduce((sum,d)=>sum+Number(d.shipping_charges_aud),0)};
+  });
+  const calendarShipping=calendarShippingParts.length>0&&calendarShippingParts.every(x=>x.complete)
+    ?calendarShippingParts.reduce((sum,x)=>sum+x.amount,0):null;
+  const calendarShopifyTotal=calendarShipping!==null&&netTotal!==null?netTotal+calendarShipping:null;
+  const cardsForOverview:Record<OverviewCard,{label:string;value:string;note:string}>={
+    revenue:{
+      label:overviewMode==="contract"?"Contract-period eligible revenue":"Calendar-month net product sales",
+      value:aud(overviewMode==="contract"?summedContract("revenue"):netTotal),
+      note:overviewMode==="contract"?"Individual client anniversaries · to "+shortDate(today):"Shopify calendar month · "+monthName(current)
+    },
+    total_sales:{
+      label:overviewMode==="contract"?"Shopify total sales · contract periods":"Shopify total sales · calendar month",
+      value:aud(overviewMode==="contract"?summedContract("totalRevenue"):calendarShopifyTotal),
+      note:"Product net sales + shipping + reported tax"
+    },
+    net_sales:{
+      label:overviewMode==="contract"?"Net product sales · contract periods":"Net product sales · calendar month",
+      value:aud(overviewMode==="contract"?summedContract("netRevenue"):netTotal),
+      note:"Excludes shipping · after refunds & discounts"
+    },
+    gross_sales:{
+      label:overviewMode==="contract"?"Gross product sales · contract periods":"Gross product sales · calendar month",
+      value:aud(overviewMode==="contract"?summedContract("grossRevenue"):calendarGross),
+      note:"Before refunds and discounts"
+    },
+    shipping:{
+      label:overviewMode==="contract"?"Shipping · contract periods":"Shipping · calendar month",
+      value:aud(overviewMode==="contract"?summedContract("shipping"):calendarShipping),
+      note:"Not automatically commissionable for every client"
+    },
+    growth:{
+      label:"Growth above agreed baseline",
+      value:aud(summedContract("growth")),
+      note:"Always current contract periods · not calendar months"
+    },
+    commission:{
+      label:"Estimated commission",
+      value:aud(summedContract("commission")),
+      note:"Always contract periods · provisional"
+    },
+    orders:{
+      label:overviewMode==="contract"?"Orders · contract periods":"Orders · calendar month",
+      value:whole(overviewMode==="contract"?summedContract("orders"):calendarOrders),
+      note:"Shopify orders"
+    },
+    ad_spend:{
+      label:"Google Ads · calendar-month spend",
+      value:aud(spendTotal),
+      note:"Calendar-month spend; daily ad spend not yet connected"
+    }
+  };
+
 
   return <div className="portal-shell agency-shell">
     <aside className="portal-sidebar">
@@ -122,12 +213,59 @@ export default async function AgencyPage({params,searchParams}:{
         {query.error==="1"&&<div className="dashboard-alert" role="alert">Could not save changes. Please check the information and account permissions.</div>}
         {failed&&<div className="dashboard-alert" role="alert">Some reporting could not be loaded. Check the Supabase connection or table permissions.</div>}
         {sectionKey==="overview"&&<>
-          <div className="kpi-grid"><Stat featured label="Net client revenue" value={aud(netTotal)} note={salesKnown.length? `${salesKnown.length} clients reporting · ${monthName(current)}`:"Shopify data not connected"}/><Stat label="Advertising spend" value={aud(spendTotal)} note={spendKnown.length?`${spendKnown.length} clients reporting`:"Google Ads data not connected"}/><Stat label="Estimated commission" value={aud(estimated)} note="Provisional · subject to agreements"/><Stat label="Active clients" value={whole(filteredClients.length)} note="Authorised client workspaces"/></div>
-          <Panel eyebrow="PORTFOLIO" title="Your clients" aside={<Link className="panel-link" href="/agency/clients">Manage clients →</Link>}>
-            {filteredClients.length?<Table titles={["Client","Current net sales","Advertising","Estimated commission","Workspace"]} rows={filteredClients.map(c=>{
-              const report=month.find(m=>m.client_id===c.id);
-              return [<strong key={c.id}>{c.name}</strong>,aud(report?.net_sales_aud),aud(report?.ad_spend_aud),aud(estimates.find(x=>x.client_id===c.id)?.value),<Link key={c.id} className="table-link" href={path("clients",c.id)}>Manage →</Link>];
+          <details className="agency-overview-settings">
+            <summary>Customize overview <span aria-hidden="true">⌄</span></summary>
+            <form action={saveAgencyOverviewPreferences} className="agency-overview-config">
+              <input type="hidden" name="selected_client_id" value={selected||""}/>
+              <label className="agency-field"><span>Default reporting view</span>
+                <select name="overview_mode" defaultValue={overviewMode}>
+                  <option value="contract">Contract anniversary periods</option>
+                  <option value="calendar">Calendar month</option>
+                </select>
+              </label>
+              <fieldset className="agency-overview-card-choices">
+                <legend>Show on your overview (select up to 8)</legend>
+                <div>{overviewOptions.map(option=><label key={option.key}>
+                  <input type="checkbox" name="visible_cards" value={option.key} defaultChecked={shownCards.includes(option.key)}/>
+                  <span>{option.label}</span>
+                </label>)}</div>
+              </fieldset>
+              <button className="login-action agency-save" type="submit">Save overview →</button>
+              <p className="agency-caption">Saved privately for your agency administrator account. Client selection still works independently. Mixed reporting dates are always labelled.</p>
+            </form>
+          </details>
+          <div className="agency-overview-period">
+            <div><span className="panel-kicker">{overviewMode==="contract"?"CONTRACT PERIOD REPORTING":"CALENDAR MONTH REPORTING"}</span>
+              <h2>{selected?lookup(selected):"All clients combined"}</h2>
+              <p>{overviewMode==="contract"
+                ?"Each client contributes its own current contract anniversary period through "+shortDate(today)+"."
+                :"Shopify figures use "+monthName(current)+"; contract growth and commissions always use agreement anniversary periods."}</p>
+              {overviewMode==="contract"&&contracted.length!==filteredClients.length&&
+                <p className="agency-report-warning">{filteredClients.length-contracted.length} client(s) without a current configured contract period are excluded from contract totals.</p>}
+              {overviewMode==="contract"&&contracted.length>0&&!allCovered&&
+                <p className="agency-report-warning">Some contract periods have incomplete daily data. Incomplete financial totals are hidden rather than underestimated.</p>}
+            </div>
+            <Link className="panel-link" href={path("commissions",selected)}>Commission details →</Link>
+          </div>
+          <div className="kpi-grid agency-kpi-grid">
+            {shownCards.map((key,i)=><Stat key={key} featured={i===0}
+              label={cardsForOverview[key].label} value={cardsForOverview[key].value} note={cardsForOverview[key].note}/>)}
+          </div>
+          <Panel eyebrow="CONTRACT PERIODS" title={selected?"Current client reporting":"All clients · current contract periods"}
+            aside={<Link className="panel-link" href={path("commissions",selected)}>Manage agreements →</Link>}>
+            {filteredClients.length?<Table titles={["Client","Current contract dates","Commission basis","Eligible revenue","Net products","Shopify total","Growth","Estimated commission","Status"]} rows={filteredClients.map(c=>{
+              const agreement=terms.find(t=>t.client_id===c.id);
+              const p=histories.get(c.id)?.[0];
+              const window=p?shortDate(p.start)+" – "+shortDate(p.end):"Not configured";
+              const status=p?(p.coverageComplete?"Through "+shortDate(p.asOf):"Daily data incomplete"):"Set commencement";
+              return [
+                <Link key={c.id} className="table-link" href={path("overview",c.id)}>{c.name} ↗</Link>,
+                window,
+                agreement?.revenue_basis==="total_sales"?"Total sales incl. shipping":agreement?"Net product sales":"—",
+                aud(p?.revenue),aud(p?.netRevenue),aud(p?.totalRevenue),aud(p?.growth),aud(p?.commission),status
+              ];
             })}/>:<Empty title="No clients yet" description="Create your first client to start managing reporting and agreements."/>}
+            <p className="panel-footnote">The portfolio combines different contract periods rather than creating an artificial shared date range. All commission values are provisional. Google Ads expenditure is currently available by calendar month only.</p>
           </Panel>
           <Panel eyebrow="BILLING" title="Recent invoices" aside={<Link className="panel-link" href="/agency/invoices">All invoices →</Link>}>
             {relevantInvoices.length?<Table titles={["Client","Invoice","Amount","Status","Issued"]} rows={relevantInvoices.slice(0,5).map(i=>[lookup(i.client_id),i.number,aud(i.amount_aud),i.status,shortDate(i.issued_on)])}/>:<Empty title="No invoices" description="Add verified invoices when billing has been issued."/>}
@@ -185,6 +323,12 @@ export default async function AgencyPage({params,searchParams}:{
                     </select>
                   </label>
                   <Field type="date" label="Contract commencement date" name="contract_start_date" defaultValue={agreement?.contract_start_date||""}/>
+                  <label className="agency-field"><span>Eligible revenue definition</span>
+                    <select name="revenue_basis" defaultValue={agreement?.revenue_basis||"net_sales"}>
+                      <option value="net_sales">Net product sales · excludes shipping</option>
+                      <option value="total_sales">Shopify total sales · includes shipping</option>
+                    </select>
+                  </label>
                   <Field type="number" label="Fixed monthly baseline (AUD)" name="baseline_aud" min="0" step="0.01" placeholder="Agreed baseline" defaultValue={agreement?.baseline_monthly_aud??""}/>
                   <Field type="number" label="Single rate (%) · flat model only" name="commission_percentage" min="0" step="0.001" placeholder="For single-rate contracts" defaultValue={agreement?.commission_rate===null||agreement?.commission_rate===undefined?"":Number(agreement.commission_rate)*100}/>
                   <Field type="number" label="Tier 1 cap above baseline (AUD)" name="tier_1_cap_aud" min="0.01" step="0.01" defaultValue={agreement?.tier_1_limit_aud??20000}/>
@@ -202,7 +346,10 @@ export default async function AgencyPage({params,searchParams}:{
                       <span>{currentPeriod.coverageComplete?`As at ${shortDate(currentPeriod.asOf)} · ${currentPeriod.isCurrent?"In progress":"Completed, provisional"}`:`Sales data incomplete (${currentPeriod.recordedDays}/${currentPeriod.expectedDays} days)`}</span>
                     </div>
                     <div className="agreement-list">
-                      <div><span>Contract-period net revenue</span><strong>{aud(currentPeriod.revenue)}</strong></div>
+                      <div><span>Commission-eligible contract revenue ({agreement?.revenue_basis==="total_sales"?"total sales":"net products"})</span><strong>{aud(currentPeriod.revenue)}</strong></div>
+                      <div><span>Net product sales · excludes shipping</span><strong>{aud(currentPeriod.netRevenue)}</strong></div>
+                      <div><span>Shopify total sales · incl. shipping</span><strong>{aud(currentPeriod.totalRevenue)}</strong></div>
+                      <div><span>Shipping charges</span><strong>{aud(currentPeriod.shipping)}</strong></div>
                       <div><span>Fixed monthly baseline</span><strong>{aud(agreement?.baseline_monthly_aud)}</strong></div>
                       <div><span>Revenue above baseline</span><strong>{aud(currentPeriod.growth)}</strong></div>
                       {isTiered&&currentPeriod.breakdown.map((tier,i)=><div key={i}><span>{tier.label} at {percentage(tier.rate)}</span><strong>{aud(tier.commission)}</strong></div>)}
@@ -210,9 +357,9 @@ export default async function AgencyPage({params,searchParams}:{
                     </div>
                   </div>
                   <div className="agency-period-history"><h4>Contract period history</h4>
-                  <Table titles={["Period","Eligible revenue","Above baseline","Commission","Status"]} rows={history.map(period=>[
+                  <Table titles={["Period","Eligible revenue","Net products","Shopify total","Above baseline","Commission","Status"]} rows={history.map(period=>[
                     `${shortDate(period.start)} – ${shortDate(period.end)}`,
-                    aud(period.revenue), aud(period.growth), aud(period.commission),
+                    aud(period.revenue),aud(period.netRevenue),aud(period.totalRevenue), aud(period.growth), aud(period.commission),
                     period.coverageComplete?period.isCurrent?"In progress":"Provisional":"Awaiting daily sales"
                   ])}/></div>
                 </>}
