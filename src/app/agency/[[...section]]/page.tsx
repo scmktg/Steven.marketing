@@ -67,16 +67,68 @@ function agreementPreview(markdown:string,client?:Client,terms?:Terms,advertisin
   };
   return markdown.replace(/\[\[([A-Z0-9_]+)\]\]/g,(original,key:string)=>termsMap[key]??original);
 }
+
+function ContractText({value}:{value:string}){
+  const parts=value.replace(/\*\*/g,"").split(/(\[\[[A-Z0-9_]+\]\])/g);
+  return <>{parts.map((part,i)=>
+    /^\[\[[A-Z0-9_]+\]\]$/.test(part)?
+      <span key={i} className="agency-contract-blank" title={part.slice(2,-2).toLowerCase().replaceAll("_"," ")}>
+        To be completed
+      </span>:
+      <span key={i}>{part}</span>
+  )}</>;
+}
+
 function AgreementPreview({body}:{body:string}){
-  const blocks=body.split("\n");
-  return <article className="agency-contract-preview">
-    {blocks.map((line,i)=>{
-      const text=line.trim();
-      if(!text)return <div key={i} className="agency-contract-spacer"/>;
-      if(text.startsWith("# "))return <h2 key={i}>{text.slice(2)}</h2>;
-      if(text.startsWith("## "))return <h3 key={i}>{text.slice(3)}</h3>;
-      return <p key={i} className={text.includes("[[")?"agency-contract-todo":undefined}>{line}</p>;
-    })}
+  const lines=body.replace(/\r\n/g,"\n").split("\n").map(line=>line.trim()).filter(Boolean);
+  const clean=(line:string)=>line.replace(/^#{1,3}\s+/,"").replace(/\*\*/g,"");
+  const sectionB=lines.findIndex(line=>clean(line).startsWith("SCHEDULE B"));
+  const sectionA=lines.findIndex(line=>clean(line).startsWith("SCHEDULE A"));
+  const signature=lines.findIndex(line=>clean(line)==="Signatures");
+
+  return <article className="agency-contract-paper" aria-label="Marketing Partnership Agreement preview">
+    <header className="agency-contract-letterhead">
+      <strong>steven.marketing</strong>
+      <span>AGREEMENT</span>
+    </header>
+    <div className="agency-contract-document">
+      {lines.map((raw,i)=>{
+        const line=clean(raw);
+        if(i===0)return <h1 key={i}>{line}</h1>;
+        if(/^SCHEDULE [AB]\s*[—-]/.test(line)){
+          const pos=line.indexOf("—");
+          return <div key={i} className="agency-contract-section">
+            <span>{pos===-1?line.split("-")[0].trim():line.slice(0,pos).trim()}</span>
+            <h2>{pos===-1?line.split("-").slice(1).join("-").trim():line.slice(pos+1).trim()}</h2>
+          </div>;
+        }
+        if(line==="Signatures")return <div key={i} className="agency-contract-section agency-contract-signatures">
+          <span>ACCEPTANCE</span><h2>Signatures</h2>
+        </div>;
+        if(i>sectionB&&/^\d+\.\s/.test(line))return <h3 key={i}>{line}</h3>;
+        if(line.startsWith("• ")||line.startsWith("- "))return <p key={i} className="agency-contract-bullet">
+          <span className="agency-contract-bullet-icon" aria-hidden="true">•</span>
+          <span><ContractText value={line.slice(2)}/></span>
+        </p>;
+        if(i>sectionA&&i<sectionB&&line.endsWith(":"))
+          return <h3 key={i} className="agency-contract-subhead">{line}</h3>;
+        const isDetail=(i>sectionA&&i<sectionB)||(i>signature);
+        const colon=isDetail?line.indexOf(":"):-1;
+        if(colon>0&&colon<95){
+          return <div key={i} className={"agency-contract-detail"+(i>signature?" agency-contract-signature-row":"")}>
+            <span className="agency-contract-detail-label">{line.slice(0,colon)}</span>
+            <span className="agency-contract-detail-value"><ContractText value={line.slice(colon+1).trim()}/></span>
+          </div>;
+        }
+        return <p key={i} className={i<Math.max(sectionA,1)?"agency-contract-intro":"agency-contract-prose"}>
+          <ContractText value={line}/>
+        </p>;
+      })}
+    </div>
+    <footer className="agency-contract-letterfoot">
+      <span>STEVEN MARKETING</span>
+      <span>MARKETING PARTNERSHIP AGREEMENT</span>
+    </footer>
   </article>;
 }
 
@@ -622,13 +674,23 @@ export default async function AgencyPage({params,searchParams}:{
           <Panel eyebrow="MASTER TEMPLATE" title={agreementMaster?.title||"Marketing Partnership Agreement"}>
             {agreementMaster?<>
               <p className="agency-caption">Master version {agreementMaster.version} · last updated {shortDate(agreementMaster.updated_at)}. Editing the master does not overwrite a client's separately saved draft or any future signed agreement.</p>
-              <form action={saveAgencyAgreementMaster} className="agency-agreement-editor">
-                <input type="hidden" name="expected_version" value={agreementMaster.version}/>
-                <label htmlFor="agency-master-agreement"><strong>Master agreement clauses</strong><span>Markdown, including clearly marked placeholders and Schedules A–C</span></label>
-                <textarea id="agency-master-agreement" name="body_markdown" defaultValue={agreementMaster.body_markdown} rows={20} spellCheck/>
-                <button className="login-action agency-save" type="submit">Save master template →</button>
-              </form>
-              <details className="agency-agreement-preview-toggle"><summary>Preview master agreement</summary><AgreementPreview body={agreementMaster.body_markdown}/></details>
+              <div className="agency-contract-preview-caption">
+                <span>DOCUMENT PREVIEW</span>
+                <span>Master agreement · read-only view</span>
+              </div>
+              <AgreementPreview body={agreementMaster.body_markdown}/>
+              <details className="agency-contract-edit-toggle">
+                <summary><span>Edit master agreement wording</span><span aria-hidden="true">＋</span></summary>
+                <form action={saveAgencyAgreementMaster} className="agency-agreement-editor">
+                  <input type="hidden" name="expected_version" value={agreementMaster.version}/>
+                  <label htmlFor="agency-master-agreement">
+                    <strong>Agreement text</strong>
+                    <span>Plain text — no Markdown symbols needed. Keep [[PLACEHOLDER_NAMES]] for client-specific details.</span>
+                  </label>
+                  <textarea id="agency-master-agreement" name="body_markdown" defaultValue={agreementMaster.body_markdown} rows={20} spellCheck/>
+                  <button className="login-action agency-save" type="submit">Save master agreement →</button>
+                </form>
+              </details>
             </>:<Empty title="Master agreement unavailable" description="Check the agreement-template database and authorisation."/>}
           </Panel>
           <Panel eyebrow="CLIENT AGREEMENTS" title={selected?"Customise this client's agreement":"Prepare a client-specific agreement"}>
@@ -641,16 +703,26 @@ export default async function AgencyPage({params,searchParams}:{
               const outstanding=(preview.match(/\[\[[A-Z0-9_]+\]\]/g)||[]).length;
               return <div className="agency-client-contract">
                 <p className="agency-caption">{client?.name} · {existing?"Private client draft revision "+existing.revision:"Based on master version "+agreementMaster.version}. Commercial values are previewed from the saved commission agreement; unresolved fields remain highlighted.</p>
-                <div className="agency-contract-status">Unresolved placeholder instances: <strong>{outstanding}</strong>. These must be completed and the text legally reviewed before signing.</div>
-                <form action={saveAgencyClientAgreementDraft} className="agency-agreement-editor">
-                  <input type="hidden" name="client_id" value={selected}/>
-                  <input type="hidden" name="expected_revision" value={existing?.revision??0}/>
-                  <input type="hidden" name="source_master_version" value={existing?.source_version??agreementMaster.version}/>
-                  <label htmlFor="agency-client-agreement"><strong>Client-specific draft</strong><span>Customise the clauses, scopes, notice, fee definitions and post-termination terms for this client only.</span></label>
-                  <textarea id="agency-client-agreement" name="body_markdown" defaultValue={body} rows={20} spellCheck/>
-                  <button className="login-action agency-save" type="submit">Save this client's draft →</button>
-                </form>
-                <details className="agency-agreement-preview-toggle"><summary>Preview with contract values</summary><AgreementPreview body={preview}/></details>
+                <div className="agency-contract-status">Details still to complete: <strong>{outstanding}</strong>. These are shown as “To be completed” in the preview and must be filled in before sending for signature.</div>
+                <div className="agency-contract-preview-caption">
+                  <span>CLIENT AGREEMENT PREVIEW</span>
+                  <span>{client?.name} · using saved commission and advertising settings</span>
+                </div>
+                <AgreementPreview body={preview}/>
+                <details className="agency-contract-edit-toggle">
+                  <summary><span>Edit this client's wording</span><span aria-hidden="true">＋</span></summary>
+                  <form action={saveAgencyClientAgreementDraft} className="agency-agreement-editor">
+                    <input type="hidden" name="client_id" value={selected}/>
+                    <input type="hidden" name="expected_revision" value={existing?.revision??0}/>
+                    <input type="hidden" name="source_master_version" value={existing?.source_version??agreementMaster.version}/>
+                    <label htmlFor="agency-client-agreement">
+                      <strong>Client agreement text</strong>
+                      <span>Make changes in plain text. Leave [[PLACEHOLDERS]] where saved client settings should be inserted.</span>
+                    </label>
+                    <textarea id="agency-client-agreement" name="body_markdown" defaultValue={body} rows={20} spellCheck/>
+                    <button className="login-action agency-save" type="submit">Save this client's agreement →</button>
+                  </form>
+                </details>
               </div>;
             })():filteredClients.length?<Table titles={["Client","Draft","Action"]} rows={filteredClients.map(c=>{
               const draft=agreementDrafts.find(d=>d.client_id===c.id);
