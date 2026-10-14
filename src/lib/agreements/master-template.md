@@ -1,7 +1,7 @@
 Marketing Partnership Agreement
-This is an agreement between me, Steven (trading as Steven Marketing), and your business named below. I do the marketing work; you run your business. These are the terms I agree to and ask you to agree to.
+This agreement is between me, Steven (trading as Steven Marketing), and your business. Here's what we've agreed.
 
-SCHEDULE A — Our agreed details
+SCHEDULE A — Our arrangement
 
 Steven: [[STEVEN_FULL_LEGAL_NAME]], trading as Steven Marketing · ABN [[STEVEN_ABN]]
 Your business: [[CLIENT_LEGAL_NAME]], trading as [[CLIENT_DISPLAY_NAME]] · ABN/ACN [[CLIENT_ABN_ACN]]
@@ -32,35 +32,28 @@ Invoices: Payable within 14 days
 Australian state or territory for this agreement: [[GOVERNING_STATE_OR_TERRITORY]]
 Anything else agreed: [[SPECIAL_CONDITIONS_OR_NONE]]
 
-SCHEDULE B — Clear terms
+SCHEDULE B — Simple terms
 
-1. What I'll do
-I'll research, plan, manage and improve the marketing work described above, and share straightforward results. I'll work carefully, but I can't promise particular sales or rankings. You'll give me accurate business information, reasonable access and timely approvals. You remain responsible for your products, pricing, customer orders and legal compliance. We will agree an initial testing budget to learn what works. I'll explain results, optimise campaigns and may recommend more spending when the evidence supports it. I can move spending between campaigns within your approved calendar-month limit, but I won't increase that limit without your written approval. Your approval through your secure dashboard counts as written approval of the budget change only, not other contract terms. You can request a reduction or pause whenever you wish. Your advertising and other approved outside costs are paid separately from my commission.
+1. Working together
+I'll do the agreed marketing work with care and report results, but can't guarantee sales. You'll provide the information, access and approvals I need, and remain responsible for your products, orders and business claims. We'll both protect private information and follow privacy laws.
 
-2. How I'll be paid
-Each contract month runs from the monthly anniversary of the start date to the day before the next anniversary. Revenue growth is the agreed revenue minus the baseline, never less than zero. For tiered commission, each rate applies only to the growth within that tier. If we agree to a different fee model above, that model applies instead.
+2. Advertising
+Early spending may be needed to learn what works. I can move spending between campaigns within your approved calendar-month limit, but need your written approval to raise it. Dashboard approval covers the budget change only. You can request a reduction or pause. Advertising and approved outside costs are separate from my commission.
 
-I'll show you the figures and my calculation before invoicing. Refunds and reporting corrections will be adjusted fairly and never counted twice. You'll provide reasonable sales records so we can verify the figures. I'll invoice after each contract month, payable within 14 days. GST is added only if applicable.
+3. Commission and payment
+A contract month runs from one start-date anniversary to the day before the next. Growth is agreed sales less the baseline, never below zero. Rates apply only to growth within each tier unless we've agreed another fee model above. I'll show calculations and adjust refunds or reporting errors fairly. You'll provide reasonable records to check them. Invoices are due within 14 days, plus GST if applicable.
 
-3. Your accounts and our information
-Your business keeps its brand, customer data, advertising accounts and marketing work you've paid for. I keep my reusable methods, tools and templates, but you can keep using any parts included in your paid-for work. I'll hand over your accounts and paid-for work when we finish. I'll protect your confidential information, and I ask you to protect mine. We'll both respect applicable privacy laws.
+4. Ownership
+You keep your accounts, brand, customer data and paid-for work. I keep my reusable tools and methods, but you can keep using those included in your paid-for work. I'll hand over your accounts and remove my access when we finish.
 
-4. Ending our arrangement
-After the first three months, either of us can end this agreement with 30 days' written notice. It ends at the first contract-month end at least 30 days after notice. Either of us may end it earlier if the other seriously breaks our agreement and doesn't fix it within 14 days of written notice.
+5. Ending the agreement
+After three months, either of us may end with 30 days' written notice, effective at the first contract-month end at least 30 days later. A serious breach can end the agreement earlier if not fixed within 14 days of written notice. Earned fees remain payable; there's no separate cancellation fee.
 
-You'll pay commissions and approved costs properly earned up to the end date. I'll hand over your work and remove my access. There's no separate cancellation fee.
+6. If my work continues bringing sales
+If you end normally, or I end because you haven't fixed a serious breach, I may receive commission for up to three further contract months on sales reasonably connected to the work documented above. Unrelated sales and independent new marketing are excluded. The usual calculation applies at 100%, then 75%, then 50%, up to the agreed total cap. Without an agreed cap, no further commission applies. I'll share supporting figures. This doesn't apply if you end because I failed to fix a serious breach. The entitlement then ends, and you're free to use your systems or another marketer.
 
-5. If my work keeps bringing you sales
-Some marketing improvements continue to work after I leave. If you end our arrangement normally, or I end it because you haven't fixed a serious breach, I may receive commission for up to three more contract months.
-
-This applies only to qualifying revenue reasonably connected to my documented work listed above—not unrelated sales or independent new marketing. We'll use the same agreed revenue rules and baseline. The qualifying commission is reduced to 100% in month one, 75% in month two and 50% in month three.
-
-The total cannot exceed the maximum amount agreed in Schedule A. If that amount isn't agreed, no post-termination commission applies. I'll provide supporting figures, and we'll resolve genuinely disputed amounts before they're invoiced.
-
-After those three months, my entitlement ends. You're free to use your accounts and work with someone else. I won't charge this commission if you ended our agreement because I failed to fix a serious breach.
-
-6. Keeping it fair
-I'll be open about my work and fees, and I expect the same openness from you. If something goes wrong, we'll try to resolve it directly before seeking mediation or using the courts in the Australian state or territory above. Changes to this agreement need both of us to agree in writing. Nothing here removes rights Australian law says either of us must keep.
+7. Fairness
+We'll discuss disagreements first, then consider mediation. Changes need both our written agreement. Neither side gives up rights protected by Australian law. The state or territory above governs this agreement.
 
 Signatures
 
