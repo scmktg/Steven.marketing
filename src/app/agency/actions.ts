@@ -113,12 +113,17 @@ export async function saveAgencyOverviewPreferences(data: FormData) {
 
 // Agreement editing is deliberately draft-only. No SignWell sends, client
 // memberships, invoice changes or signed-contract mutations occur here.
+const normalizeAgreementText=(value:string)=>value.replace(/\r\n/g,"\n")
+  .replace(/^#{1,3}[ \t]+/gm,"")
+  .replace(/\*\*/g,"")
+  .replace(/^[ \t]*-[ \t]+/gm,"• ")
+  .replace(/[ \t]+$/gm,"");
 const validateAgreementBody=(value:string)=>value.length>=400&&value.length<=80000&&
   value.includes("SCHEDULE A")&&value.includes("SCHEDULE B");
 
 export async function saveAgencyAgreementMaster(data:FormData) {
   const {supabase,userId}=await requireAgencyAdmin();
-  const body=clean(data,"body_markdown").replace(/\r\n/g,"\n");
+  const body=normalizeAgreementText(clean(data,"body_markdown"));
   const expected=Number(clean(data,"expected_version"));
   const key="marketing-performance-v1";
   if(!validateAgreementBody(body)||!Number.isInteger(expected)||expected<1)
@@ -133,7 +138,7 @@ export async function saveAgencyClientAgreementDraft(data:FormData) {
   const {supabase,userId}=await requireAgencyAdmin();
   const clientId=clean(data,"client_id");
   if(!await allowedClient(supabase,clientId)) finish("agreements",false);
-  const body=clean(data,"body_markdown").replace(/\r\n/g,"\n");
+  const body=normalizeAgreementText(clean(data,"body_markdown"));
   const expected=Number(clean(data,"expected_revision"));
   const version=Number(clean(data,"source_master_version"));
   if(!validateAgreementBody(body)||!Number.isInteger(expected)||expected<0||
