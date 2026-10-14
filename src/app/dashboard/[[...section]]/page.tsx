@@ -4,7 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { SignOut } from "@/components/sign-out";
 import { portalConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
-import { contractHistory, sydneyToday, type AgreementTerms, type DailySales } from "@/lib/commission";
+import { contractHistory, sydneyToday, adSpendForPeriod, type AgreementTerms, type DailySales, type DailyAdSpend } from "@/lib/commission";
 import {decideAdvertisingBudget} from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +22,7 @@ type Terms = AgreementTerms;
 type Invoice = { id: string; number: string; issued_on: string | null; due_on: string | null; amount_aud: number; status: string; hosted_invoice_url: string | null };
 type AdvertisingSettings = {initial_testing_budget_aud:number;approved_monthly_limit_aud:number|null;objectives:string;phase:"testing"|"optimising"|"scaling"};
 type AdvertisingRequest = {id:string;proposed_monthly_limit_aud:number;previous_monthly_limit_aud:number|null;reason:string;status:string;created_at:string;decided_at:string|null};
-type AdvertisingDay = {day:string;ads_account_id:string;ad_spend_aud:number};
+type AdvertisingDay = DailyAdSpend;
 const nav: { id: Area; title: string; symbol: string }[] = [
   { id: "overview", title: "Overview", symbol: "◫" },
   { id: "sales", title: "Sales", symbol: "↗" },
@@ -113,7 +113,8 @@ export default async function Dashboard({ params, searchParams }: {
       supabase.from("client_ad_budget_requests").select("id,proposed_monthly_limit_aud,previous_monthly_limit_aud,reason,status,created_at,decided_at")
         .eq("client_id",client.id).order("created_at",{ascending:false}).limit(50),
       supabase.from("client_daily_ad_spend").select("day,ads_account_id,ad_spend_aud")
-        .eq("client_id",client.id).gte("day",currentMonth()).lte("day",sydneyToday()).limit(500)
+        .eq("client_id",client.id).gte("day",new Date(Date.now()-270*86400000).toISOString().slice(0,10))
+        .lte("day",sydneyToday()).order("day",{ascending:false}).limit(1000)
     ]);
     fetchFailed = fetchFailed || Boolean(metricsResult.error || termsResult.error || invoicesResult.error || dailyResult.error || adSettingsResult.error || adRequestsResult.error || adDailyResult.error);
     months = (metricsResult.data ?? []) as Month[];
@@ -137,14 +138,19 @@ export default async function Dashboard({ params, searchParams }: {
   const rate=terms?.commission_rate===null||terms?.commission_rate===undefined?null:Number(terms.commission_rate);
   const periodName=currentPeriod?[dateLabel(currentPeriod.start),dateLabel(currentPeriod.end)].join(" – "):"Contract dates not configured";
   const modelName=tiered?"Tiered revenue growth":hasGrowthModel?"Revenue growth":"Manually reconciled";
+  const adHistory=history.map(period=>({period,ads:adSpendForPeriod(period,dailyAdSpend)}));
+  const contractAds=adHistory[0]?.ads??null;
+  const contractDays=currentPeriod?currentPeriod.recordedDays+"/"+currentPeriod.expectedDays+" days":"No contract date";
+  const adDays=contractAds?contractAds.recordedDays+"/"+contractAds.expectedDays+" days":"No contract date";
   const chosenArea = area as Area;
   const pendingBudget=budgetRequests.find(r=>r.status==="pending");
-  const hasSpendDays=dailyAdSpend.length>0;
+  const monthAdRows=dailyAdSpend.filter(r=>r.day>=currentMonth()&&r.day<=sydneyToday());
+  const hasSpendDays=monthAdRows.length>0;
   const spentThisMonth=hasSpendDays?
-    Math.round(dailyAdSpend.reduce((sum,row)=>sum+Math.round(Number(row.ad_spend_aud)*10000),0)/100)/100:null;
-  const spendDays=new Set(dailyAdSpend.map(r=>r.day)).size;
+    Math.round(monthAdRows.reduce((sum,row)=>sum+Math.round(Number(row.ad_spend_aud)*10000),0)/100)/100:null;
+  const spendDays=new Set(monthAdRows.map(r=>r.day)).size;
   const spendSnapshotComplete=hasSpendDays&&spendDays===Number(sydneyToday().slice(8,10));
-  const latestSpendDay=dailyAdSpend.map(r=>r.day).sort().at(-1)||null;
+  const latestSpendDay=monthAdRows.map(r=>r.day).sort().at(-1)||null;
   const approvedLimit=advertising?.approved_monthly_limit_aud??null;
   const remainingBudget=approvedLimit!==null&&spentThisMonth!==null&&spendSnapshotComplete?Math.round((approvedLimit-spentThisMonth)*100)/100:null;
 
@@ -166,7 +172,7 @@ export default async function Dashboard({ params, searchParams }: {
       <div className="portal-body">
         <div className="page-heading"><div>
           <p className="dashboard-eyebrow">YOUR BUSINESS AT A GLANCE</p>
-          <h1>{chosenArea === "overview" ? "Overview" : nav.find(item=>item.id===chosenArea)?.title}<span className="heading-period"> / {monthLabel(currentMonth())}</span></h1>
+          <h1>{chosenArea === "overview" ? "Overview" : nav.find(item=>item.id===chosenArea)?.title}<span className="heading-period"> / {["sales","advertising","commissions"].includes(chosenArea)&&currentPeriod?periodName:monthLabel(currentMonth())}</span></h1>
           <p className="dashboard-subtitle">{client?.name ?? "Your workspace"} · Performance that matters, without the noise.</p>
         </div>{memberships.length > 1 && <div className="client-switch"><span>Workspace</span><div className="client-links">{memberships.map(item=><Link key={item.id} className={item.id===client?.id?"selected":""} href={href(chosenArea,item.slug)}>{item.name}</Link>)}</div></div>}</div>
 
@@ -178,7 +184,7 @@ export default async function Dashboard({ params, searchParams }: {
           <section className="kpi-grid" aria-label="Current month key metrics">
             <Metric label="Eligible revenue · contract period" value={money(currentPeriod?.revenue)} detail={currentPeriod?.coverageComplete?periodName+" · "+(terms?.revenue_basis==="total_sales"?"incl. shipping":"excl. shipping"):"Awaiting complete daily sales"} accent />
             <Metric label="Revenue above baseline" value={money(growth)} detail={currentPeriod?periodName:baseline===null?"Baseline not set":"Contract commencement not set"} />
-            <Metric label="Google Ads · calendar month" value={money(thisMonth?.ad_spend_aud)} detail={thisMonth?.ads_synced_at ? "Google Ads · "+dateLabel(thisMonth.ads_synced_at.split("T")[0]) : "Awaiting ad data"} />
+            <Metric label="Google Ads · contract period" value={money(contractAds?.amount)} detail={contractAds?.coverageComplete?periodName+" · through "+dateLabel(currentPeriod?.asOf??null):"Awaiting complete daily ad spend"} />
             <Metric label="Estimated commission" value={money(commission)} detail={currentPeriod?.coverageComplete?periodName+" · Provisional":"Awaiting complete contract-period data"} />
           </section>
           <div className="dashboard-columns">
@@ -215,15 +221,88 @@ export default async function Dashboard({ params, searchParams }: {
           </section>
         </> :
         chosenArea === "sales" ? <>
-          <section className="kpi-grid three"><Metric label="Net revenue · this month" value={money(netSales)} detail="Sales minus refunds and discounts"/><Metric label="Orders · this month" value={integer(thisMonth?.orders)} /><Metric label="Contract-period baseline" value={money(baseline)} detail="Not a calendar-month sales target"/></section>
-          <section className="panel"><div className="panel-heading"><div><span className="panel-kicker">MONTHLY HISTORY</span><h2>Sales results</h2></div></div>
-          {months.length ? <Table columns={["Month","Gross sales","Net sales","Orders","Shopify sync"]} rows={months.map(row=>[monthLabel(row.month),money(row.gross_sales_aud),money(row.net_sales_aud),integer(row.orders),row.shopify_synced_at ? dateLabel(row.shopify_synced_at.split("T")[0]) : "Not synced"])}/> : <Empty title="No sales data yet" detail="Monthly Shopify totals, orders and refund-adjusted net sales will show here when connected."/>}</section>
+          <section className="panel agency-period-banner">
+            <span className="panel-kicker">SALES · CONTRACT PERIOD</span>
+            <h2>{periodName}</h2>
+            <p className="agency-caption">This is the same anniversary-based reporting period used to calculate your commission. Current values are measured through {dateLabel(currentPeriod?.asOf??null)}, with missing reporting dates shown explicitly.</p>
+          </section>
+          <section className="kpi-grid">
+            <Metric label="Net product sales · contract period" value={money(currentPeriod?.netRevenue)} detail="After refunds and discounts · excluding customer shipping" accent/>
+            <Metric label="Shopify total sales · contract period" value={money(currentPeriod?.totalRevenue)} detail="Includes customer shipping and any reported tax"/>
+            <Metric label="Orders · contract period" value={integer(currentPeriod?.orders)} detail={contractDays}/>
+            <Metric label="Shipping charged to customers" value={money(currentPeriod?.shipping)} detail="Shipping revenue, not courier expense"/>
+          </section>
+          {!currentPeriod?<section className="panel"><Empty title="Agreement start date not configured" detail="Once your contract commencement date is set, sales appear in the same reporting periods as your commission."/></section>:
+            !currentPeriod.coverageComplete&&<p className="dashboard-alert">Some daily sales records are unavailable ({contractDays}). Incomplete figures are withheld rather than underreported.</p>}
+          <section className="panel">
+            <div className="panel-heading"><div><span className="panel-kicker">CURRENT CONTRACT PERIOD</span><h2>Sales and revenue breakdown</h2></div>
+              <Link href={href("commissions",client.slug)} className="panel-link">Commission calculation →</Link></div>
+            {currentPeriod?<div className="agreement-list">
+              <div><span>Current period</span><strong>{periodName}</strong></div>
+              <div><span>Shopify total sales</span><strong>{money(currentPeriod.totalRevenue)}</strong></div>
+              <div><span>Net product sales</span><strong>{money(currentPeriod.netRevenue)}</strong></div>
+              <div><span>Gross product sales</span><strong>{money(currentPeriod.grossRevenue)}</strong></div>
+              <div><span>Customer shipping charges</span><strong>{money(currentPeriod.shipping)}</strong></div>
+              <div><span>Orders</span><strong>{integer(currentPeriod.orders)}</strong></div>
+              <div><span>Eligible revenue for commission</span><strong>{money(currentPeriod.revenue)}</strong></div>
+              <div><span>Daily data coverage</span><strong>{contractDays}</strong></div>
+            </div>:<Empty title="No contract period yet" detail="The agreement commencement date is needed to show accurate figures."/>}
+            <p className="panel-footnote">Figures are based on daily Shopify records, not calendar-month totals. Sales data is a reporting snapshot, not a continuous background feed.</p>
+          </section>
+          <section className="panel">
+            <div className="panel-heading"><div><span className="panel-kicker">CONTRACT ANNIVERSARY HISTORY</span><h2>Sales reporting periods</h2></div></div>
+            {history.length?<Table columns={["Contract period","Total sales","Net sales","Gross sales","Shipping","Orders","Coverage"]} rows={
+              history.map(p=>[
+                dateLabel(p.start)+" – "+dateLabel(p.end),money(p.totalRevenue),money(p.netRevenue),money(p.grossRevenue),
+                money(p.shipping),integer(p.orders),p.recordedDays+"/"+p.expectedDays+(p.isCurrent?" · ongoing":p.coverageComplete?" · complete":" · incomplete")
+              ])
+            }/>:<Empty title="No contract-period history" detail="Add a commencement date to display anniversary-based sales history."/>}
+            <p className="panel-footnote">Historical periods use precisely the same start and end dates as your commission calculations. Missing daily records remain unavailable, not assumed to be zero.</p>
+          </section>
         </> :
         chosenArea === "advertising" ? <>
+          <section className="panel agency-period-banner">
+            <span className="panel-kicker">GOOGLE ADS · CONTRACT PERIOD</span>
+            <h2>{periodName}</h2>
+            <p className="agency-caption">Advertising performance matches your contract's anniversary dates and commission period through {dateLabel(currentPeriod?.asOf??null)}. Budget approvals further down remain calendar-month limits.</p>
+          </section>
           <section className="kpi-grid three">
-            <Metric label="Approved monthly spending limit" value={money(approvedLimit)} detail="Calendar-month authority · not an automatic spending control" accent/>
-            <Metric label="Recorded spend this month" value={money(spentThisMonth)} detail={latestSpendDay?"Daily Google Ads records through "+dateLabel(latestSpendDay):"No daily records yet"}/>
-            <Metric label="Limit less recorded spend" value={money(remainingBudget)} detail={spendSnapshotComplete?"Based on recorded daily spend":"Provisional · spending data incomplete"}/>
+            <Metric label="Google Ads spend · contract period" value={money(contractAds?.amount)} detail={contractAds?.coverageComplete?"Complete daily records through "+dateLabel(currentPeriod?.asOf??null):"Requires complete daily Google Ads data"} accent/>
+            <Metric label="Daily Google Ads coverage" value={adDays} detail={contractAds?.coverageComplete?"All contract-period days recorded":"Missing ad spend dates are not treated as $0"}/>
+            <Metric label="Net product sales · same period" value={money(currentPeriod?.netRevenue)} detail="Shopify sales · not attributed solely to Google Ads"/>
+          </section>
+          <section className="panel">
+            <div className="panel-heading"><div><span className="panel-kicker">CURRENT CONTRACT PERIOD</span><h2>Advertising investment</h2></div>
+              <Link href={href("sales",client.slug)} className="panel-link">Compare sales →</Link></div>
+            {currentPeriod?<div className="agreement-list">
+              <div><span>Reporting period</span><strong>{periodName}</strong></div>
+              <div><span>Google Ads spend</span><strong>{money(contractAds?.amount)}</strong></div>
+              <div><span>Daily ad records</span><strong>{adDays}</strong></div>
+              <div><span>Shopify net product sales</span><strong>{money(currentPeriod.netRevenue)}</strong></div>
+              <div><span>Shopify total sales</span><strong>{money(currentPeriod.totalRevenue)}</strong></div>
+            </div>:<Empty title="Contract dates not configured" detail="Configure a contract commencement date to align Google Ads spend to commission periods."/>}
+            <p className="panel-footnote">Google Ads spending and Shopify sales use different reporting systems; revenue here is not necessarily attributed to Google Ads. Missing daily ad spend suppresses the total.</p>
+          </section>
+          <section className="panel">
+            <div className="panel-heading"><div><span className="panel-kicker">CONTRACT ANNIVERSARY HISTORY</span><h2>Google Ads spending by contract month</h2></div></div>
+            {adHistory.length?<Table columns={["Contract period","Ad spend","Daily coverage","Status"]} rows={
+              adHistory.map(({period:p,ads:a})=>[
+                dateLabel(p.start)+" – "+dateLabel(p.end),money(a.amount),
+                a.recordedDays+"/"+a.expectedDays,
+                a.coverageComplete?(p.isCurrent?"Current · to "+dateLabel(p.asOf):"Complete"):"Incomplete daily data"
+              ])
+            }/>:<Empty title="No contract-period spending history" detail="The contract commencement date is needed to group Google Ads daily spend."/>}
+            <p className="panel-footnote">Exactly the same dates as Sales and Commissions, including periods crossing two calendar months. Advertising data is a snapshot and may require a fresh sync.</p>
+          </section>
+          <div className="agency-period-banner budget-calendar-divider">
+            <span className="panel-kicker">SEPARATE CALENDAR-MONTH CONTROLS</span>
+            <h2>Advertising budget approvals</h2>
+            <p className="agency-caption">The client's approved spending limit remains a calendar-month control. It does not automatically change campaign budgets in Google Ads.</p>
+          </div>
+          <section className="kpi-grid three">
+            <Metric label="Approved monthly spending limit" value={money(approvedLimit)} detail="Calendar-month authority · not an automatic spending control"/>
+            <Metric label="Recorded spend this calendar month" value={spendSnapshotComplete?money(spentThisMonth):"—"} detail={latestSpendDay?"Daily Google Ads records through "+dateLabel(latestSpendDay):"No daily records yet"}/>
+            <Metric label="Limit less recorded spend" value={money(remainingBudget)} detail={spendSnapshotComplete?"Based on recorded daily spend":"Unavailable · spending data incomplete"}/>
           </section>
           <section className="panel">
             <div className="panel-heading"><div><span className="panel-kicker">HOW WE INVEST</span><h2>Your advertising plan</h2></div></div>
@@ -268,11 +347,7 @@ export default async function Dashboard({ params, searchParams }: {
             ])}/>:<Empty title="No budget requests yet" detail="Any increases or changes Steven proposes will appear here for review."/>}
             <p className="panel-footnote">You can request a reduction or pause at any time by contacting <a href="mailto:hello@steven.marketing?subject=Advertising%20budget%20change">Steven directly ↗</a>. A dashboard approval is not proof that Google Ads has been updated; campaign adjustments are performed separately.</p>
           </section>
-          <section className="panel">
-            <div className="panel-heading"><div><span className="panel-kicker">GOOGLE ADS</span><h2>Advertising investment</h2></div></div>
-            {months.some(row=>row.ad_spend_aud !== null) ? <Table columns={["Month","Ad spend (snapshot)","Data last synced"]} rows={months.map(row=>[monthLabel(row.month),money(row.ad_spend_aud),row.ads_synced_at ? dateLabel(row.ads_synced_at.split("T")[0]) : "Not synced"])}/> : <Empty title="Advertising reporting is not connected" detail="Google Ads spend will appear here after the account integration is configured." />}
-            <p className="panel-footnote">Advertising reporting may lag actual costs. Sales and advertising use different measurement systems; no automatic attribution or live spending enforcement is implied.</p>
-          </section>
+          <p className="panel-footnote">Spending controls and client approvals use calendar months, while advertising reports above use your contract dates. Neither this dashboard nor its reports automatically enforce live Google Ads spending limits.</p>
         </> :
         chosenArea === "commissions" ? <>
           <section className="kpi-grid three">
