@@ -22,9 +22,18 @@ export function LoginForm({ configured, linkError }: { configured: boolean; link
     try {
       const supabase = createClient();
       if (mode === "forgot") {
-        await supabase.auth.resetPasswordForEmail(email.trim(), {
+        const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
           redirectTo: `${window.location.origin}/auth/callback?next=/reset-password`
         });
+        if (error) {
+          // Don't show a success message when Supabase has rejected the request.
+          if (error.status === 429 || error.code === "over_email_send_rate_limit") {
+            setFailure(true);
+            setMessage("Password reset email limit reached. Please try again later or contact support.");
+            return;
+          }
+          throw error;
+        }
         // Do not disclose whether an email exists.
         setMessage("If that address has an account, a password reset email will arrive shortly.");
       } else {
