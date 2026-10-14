@@ -35,6 +35,9 @@ export async function saveAgencyTerms(data: FormData) {
   const clientId = clean(data, "client_id");
   if (!await allowedClient(supabase, clientId)) finish("clients", false);
   const model = clean(data,"commission_model");
+  const revenueBasis=clean(data,"revenue_basis");
+  if(!["net_sales","total_sales"].includes(revenueBasis)) finish("commissions",false,clientId);
+
   if (!["tiered_revenue_growth","revenue_growth","manual"].includes(model)) finish("commissions",false,clientId);
 
   const start = clean(data,"contract_start_date");
@@ -67,6 +70,7 @@ export async function saveAgencyTerms(data: FormData) {
   const { error } = await supabase.from("client_terms").upsert({
     client_id: clientId,
     commission_model: model,
+    revenue_basis: revenueBasis,
     contract_start_date: start || null,
     baseline_monthly_aud: baseline,
     commission_rate: flatPercent===null ? null : flatPercent/100,
@@ -78,6 +82,30 @@ export async function saveAgencyTerms(data: FormData) {
     updated_at: new Date().toISOString()
   }, { onConflict:"client_id" });
   finish("commissions",!error,clientId);
+}
+
+const visibleOverviewKeys = [
+  "revenue","total_sales","net_sales","gross_sales","shipping",
+  "growth","commission","orders","ad_spend"
+] as const;
+
+export async function saveAgencyOverviewPreferences(data: FormData) {
+  const { supabase,userId } = await requireAgencyAdmin();
+  const mode=clean(data,"overview_mode");
+  const selectedClient=clean(data,"selected_client_id");
+  const wanted=new Set(data.getAll("visible_cards").map(x=>String(x)));
+  const cards=visibleOverviewKeys.filter(key=>wanted.has(key));
+  if(!["contract","calendar"].includes(mode) ||
+     cards.length<1 || cards.length>8 || wanted.size!==cards.length){
+    finish("overview",false,uuidPattern.test(selectedClient)?selectedClient:undefined);
+  }
+  const { error } = await supabase.from("agency_dashboard_preferences").upsert({
+    user_id:userId,
+    overview_mode:mode,
+    visible_cards:cards,
+    updated_at:new Date().toISOString()
+  },{onConflict:"user_id"});
+  finish("overview",!error,uuidPattern.test(selectedClient)?selectedClient:undefined);
 }
 
 export async function assignClientMember(data: FormData) {
