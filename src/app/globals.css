@@ -40,3 +40,26 @@
 .agency-client-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.agency-client-item{display:flex;align-items:center;gap:13px;padding:15px;border:1px solid #eaeaea;border-radius:11px}.agency-client-item:hover,.agency-client-item.is-selected{border-color:#111}.agency-client-item strong{display:block;font-size:13px;font-weight:600}.agency-client-item small{display:block;margin-top:6px;color:#999;font-size:11px}.client-arrow{margin-left:auto;font-size:17px;color:#999}
 .agency-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:end;margin-top:22px}.agency-field{display:flex;flex-direction:column;gap:8px;min-width:0}.agency-field>span{font-size:11px;font-weight:600;color:#666}.agency-field input,.agency-field select{width:100%;min-height:45px;border:1px solid #ddd;border-radius:8px;background:#fff;font:inherit;font-size:13px;padding:10px 12px;color:#111}.agency-field input:focus,.agency-field select:focus{outline:2px solid #ddd;outline-offset:1px}.agency-save{border:0;width:max-content;min-height:45px;margin:0;padding:13px 22px;cursor:pointer}.agency-caption{font-size:12px;line-height:1.8;color:#888}.agency-notification{padding:14px 18px;background:#f6f6f6;border:1px solid #e6e6e6;color:#333;border-radius:8px;font-size:12px;margin-bottom:22px}.agency-light-button{border:1px solid #ddd;background:#fff;border-radius:7px;font-size:11px;padding:8px 13px;cursor:pointer}.agency-light-button:hover{background:#f4f4f4}.agency-code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px}.agency-agreement{padding:24px 0;border-bottom:1px solid #ededed}.agency-agreement:first-of-type{padding-top:0}.agency-agreement:last-of-type{border-bottom:0}.agency-agreement-header h3{font-size:16px;font-weight:600;margin:0 0 8px}.agency-agreement-header p{font-size:12px;color:#888;margin:0}.agency-agreement .agency-form{grid-template-columns:repeat(3,minmax(0,1fr));align-items:end}.agency-agreement .agency-save{grid-column:1 / -1}
 @media(max-width:760px){.agency-client-list,.agency-form,.agency-agreement .agency-form{grid-template-columns:1fr}.agency-agreement .agency-save{grid-column:auto}.agency-code{font-size:10px}.agency-selector{margin-top:0}}
+
+
+/* Contract reporting overview — neutral, accessible, responsive. */
+.agency-overview-settings{border:1px solid #e8e8e8;border-radius:13px;margin-bottom:18px;background:#fff}
+.agency-overview-settings>summary{cursor:pointer;padding:16px 20px;display:flex;align-items:center;justify-content:space-between;font-size:12px;font-weight:600;list-style:none}
+.agency-overview-settings>summary::-webkit-details-marker{display:none}
+.agency-overview-settings[open]>summary{border-bottom:1px solid #eee}
+.agency-overview-config{display:flex;flex-direction:column;gap:18px;padding:19px 20px 21px}
+.agency-overview-config .agency-field{max-width:460px}
+.agency-overview-card-choices{margin:0;padding:0;border:0;min-width:0}
+.agency-overview-card-choices legend{font-size:11px;font-weight:600;color:#666;margin-bottom:11px}
+.agency-overview-card-choices>div{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.agency-overview-card-choices label{display:flex;align-items:center;gap:9px;border:1px solid #eee;border-radius:8px;padding:11px 12px;font-size:12px;color:#555;cursor:pointer;min-height:45px}
+.agency-overview-card-choices input{accent-color:#111;width:15px;height:15px;flex:none}
+.agency-overview-card-choices label:has(input:checked){border-color:#a9a9a9;color:#111}
+.agency-overview-period{border-bottom:1px solid #ebebeb;padding:11px 0 24px;margin-bottom:22px;display:flex;justify-content:space-between;align-items:center;gap:22px}
+.agency-overview-period h2{font-size:23px;line-height:1.15;font-weight:580;letter-spacing:-.045em;margin:8px 0}
+.agency-overview-period p{font-size:12px;line-height:1.7;color:#888;max-width:660px;margin:3px 0}
+.agency-overview-period .agency-report-warning{color:#7d542d}
+.agency-kpi-grid{grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
+.agency-kpi-grid .kpi-value{white-space:normal;overflow-wrap:anywhere;font-size:clamp(22px,2vw,31px)}
+@media(max-width:840px){.agency-overview-card-choices>div{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:570px){.agency-overview-card-choices>div{grid-template-columns:1fr}.agency-overview-period{display:block}.agency-kpi-grid{grid-template-columns:1fr}}
