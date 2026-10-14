@@ -4,17 +4,19 @@ import type { ReactNode } from "react";
 import { SignOut } from "@/components/sign-out";
 import { requireAgencyAdmin } from "@/lib/agency-auth";
 import { contractHistory, sydneyToday, adSpendForPeriod, revenueAfterDeductions, type AgreementTerms, type DailySales, type DailyAdSpend } from "@/lib/commission";
-import { createAgencyClient, saveAgencyTerms, assignClientMember, removeClientMember, addAgencyInvoice, saveAgencyOverviewPreferences } from "../actions";
+import { createAgencyClient, saveAgencyTerms, assignClientMember, removeClientMember, addAgencyInvoice, saveAgencyOverviewPreferences, saveAgencyAgreementMaster, saveAgencyClientAgreementDraft } from "../actions";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title:"Agency dashboard | steven.marketing", robots:{index:false,follow:false} };
 
-type Section = "overview" | "clients" | "sales" | "advertising" | "commissions" | "invoices";
+type Section = "overview" | "clients" | "sales" | "advertising" | "commissions" | "agreements" | "invoices";
 type Client = { id:string; name:string; slug:string };
 type Terms = AgreementTerms & {client_id:string};
 type Metrics = {client_id:string;month:string;gross_sales_aud:number|null;net_sales_aud:number|null;orders:number|null;ad_spend_aud:number|null;shopify_synced_at:string|null;ads_synced_at:string|null};
 type Invoice = {id:string;client_id:string;number:string;amount_aud:number;status:string;issued_on:string|null;due_on:string|null;hosted_invoice_url:string|null};
 type Membership = {client_id:string;user_id:string;role:string};
+type MasterAgreement = {template_key:string;title:string;body_markdown:string;version:number;updated_at:string};
+type ClientAgreementDraft = {client_id:string;body_markdown:string;source_version:number;revision:number;updated_at:string};
 type OverviewCard = "revenue_after_costs" | "contract_ad_spend" | "revenue" | "total_sales" | "net_sales" | "gross_sales" | "shipping" | "growth" | "commission" | "orders" | "ad_spend";
 type OverviewMode = "contract" | "calendar";
 const overviewOptions: {key:OverviewCard;label:string}[] = [
@@ -33,6 +35,7 @@ const sections: {key:Section;label:string;icon:string}[]=[
   {key:"sales",label:"Sales",icon:"↗"},
   {key:"advertising",label:"Advertising",icon:"◉"},
   {key:"commissions",label:"Commissions",icon:"◇"},
+  {key:"agreements",label:"Agreements",icon:"▧"},
   {key:"invoices",label:"Invoices",icon:"▤"}
 ];
 const aud = (n:number|null|undefined)=>n===null||n===undefined?"—":new Intl.NumberFormat("en-AU",{style:"currency",currency:"AUD"}).format(Number(n));
@@ -41,6 +44,36 @@ const shortDate=(s:string|null|undefined)=>s?new Intl.DateTimeFormat("en-AU",{da
 const monthName=(s:string)=>new Intl.DateTimeFormat("en-AU",{month:"short",year:"numeric",timeZone:"UTC"}).format(new Date(s+"T12:00:00Z"));
 const percentage=(n:number|null|undefined)=>n===null||n===undefined?"—":`${(Number(n)*100).toFixed(2)}%`;
 const monthNow=()=>sydneyToday().slice(0,7)+"-01";
+// Render only allowlisted, public commercial placeholders. Client legal identity,
+ // financial scope and third-party permissions still require explicit completion.
+function agreementPreview(markdown:string,client?:Client,terms?:Terms){
+  const termsMap:Record<string,string>={
+    CLIENT_DISPLAY_NAME:client?.name??"[[CLIENT_DISPLAY_NAME]]",
+    CONTRACT_START_DATE:terms?.contract_start_date?shortDate(terms.contract_start_date):"[[CONTRACT_START_DATE]]",
+    COMMISSION_MODEL:terms?.commission_model==="tiered_revenue_growth"?"Tiered growth above baseline":terms?.commission_model==="revenue_growth"?"Single-rate growth above baseline":terms?.commission_model==="manual"?"Custom / individually reconciled":"[[COMMISSION_MODEL]]",
+    MONTHLY_BASELINE_AUD:terms?.baseline_monthly_aud!==null&&terms?.baseline_monthly_aud!==undefined?aud(terms.baseline_monthly_aud):"[[MONTHLY_BASELINE_AUD]]",
+    REVENUE_BASIS:terms?.revenue_basis==="total_sales"?"Shopify total sales including shipping":terms?.revenue_basis==="net_sales"?"Shopify net product sales excluding shipping":"[[REVENUE_BASIS]]",
+    TIER_1_LIMIT_AUD:terms?.tier_1_limit_aud!==null&&terms?.tier_1_limit_aud!==undefined?aud(terms.tier_1_limit_aud):"[[TIER_1_LIMIT_AUD]]",
+    TIER_2_LIMIT_AUD:terms?.tier_2_limit_aud!==null&&terms?.tier_2_limit_aud!==undefined?aud(terms.tier_2_limit_aud):"[[TIER_2_LIMIT_AUD]]",
+    TIER_1_RATE:terms?.tier_1_rate!==null&&terms?.tier_1_rate!==undefined?percentage(terms.tier_1_rate):"[[TIER_1_RATE]]",
+    TIER_2_RATE:terms?.tier_2_rate!==null&&terms?.tier_2_rate!==undefined?percentage(terms.tier_2_rate):"[[TIER_2_RATE]]",
+    TIER_3_RATE:terms?.tier_3_rate!==null&&terms?.tier_3_rate!==undefined?percentage(terms.tier_3_rate):"[[TIER_3_RATE]]"
+  };
+  return markdown.replace(/\[\[([A-Z0-9_]+)\]\]/g,(original,key:string)=>termsMap[key]??original);
+}
+function AgreementPreview({body}:{body:string}){
+  const blocks=body.split("\n");
+  return <article className="agency-contract-preview">
+    {blocks.map((line,i)=>{
+      const text=line.trim();
+      if(!text)return <div key={i} className="agency-contract-spacer"/>;
+      if(text.startsWith("# "))return <h2 key={i}>{text.slice(2)}</h2>;
+      if(text.startsWith("## "))return <h3 key={i}>{text.slice(3)}</h3>;
+      return <p key={i} className={text.includes("[[")?"agency-contract-todo":undefined}>{line}</p>;
+    })}
+  </article>;
+}
+
 const path=(section:Section,clientId?:string)=>`/agency${section==="overview"?"":"/"+section}${clientId?"?client="+encodeURIComponent(clientId):""}`;
 
 function Stat({label,value,note,featured=false}:{label:string;value:string;note?:string;featured?:boolean}){
@@ -73,7 +106,7 @@ export default async function AgencyPage({params,searchParams}:{
   const {supabase,userId}=await requireAgencyAdmin();
   const query=await searchParams;
 
-  const [clientsResponse,termsResponse,metricsResponse,invoicesResponse,membershipsResponse,dailyResponse,adsDailyResponse,prefsResponse]=await Promise.all([
+  const [clientsResponse,termsResponse,metricsResponse,invoicesResponse,membershipsResponse,dailyResponse,adsDailyResponse,prefsResponse,agreementMasterResponse,agreementDraftsResponse]=await Promise.all([
     supabase.from("clients").select("id,name,slug").order("name").limit(200),
     supabase.from("client_terms").select("client_id,commission_model,contract_start_date,revenue_basis,baseline_monthly_aud,commission_rate,tier_1_limit_aud,tier_2_limit_aud,tier_1_rate,tier_2_rate,tier_3_rate").limit(200),
     supabase.from("client_monthly_metrics").select("client_id,month,gross_sales_aud,net_sales_aud,orders,ad_spend_aud,shopify_synced_at,ads_synced_at").order("month",{ascending:false}).limit(1000),
@@ -81,9 +114,11 @@ export default async function AgencyPage({params,searchParams}:{
     supabase.from("client_memberships").select("client_id,user_id,role").limit(500),
     supabase.from("client_daily_sales").select("client_id,day,net_sales_aud,gross_sales_aud,total_sales_aud,shipping_charges_aud,orders").gte("day", new Date(Date.now()-270*86400000).toISOString().slice(0,10)).order("day",{ascending:false}).limit(1000),
     supabase.from("client_daily_ad_spend").select("client_id,day,ads_account_id,ad_spend_aud").gte("day",new Date(Date.now()-270*86400000).toISOString().slice(0,10)).order("day",{ascending:false}).limit(1000),
-    supabase.from("agency_dashboard_preferences").select("overview_mode,visible_cards").eq("user_id",userId).maybeSingle()
+    supabase.from("agency_dashboard_preferences").select("overview_mode,visible_cards").eq("user_id",userId).maybeSingle(),
+    supabase.from("agency_agreement_templates").select("template_key,title,body_markdown,version,updated_at").eq("template_key","marketing-performance-v1").maybeSingle(),
+    supabase.from("client_agreement_drafts").select("client_id,body_markdown,source_version,revision,updated_at").limit(200)
   ]);
-  const failed=Boolean(clientsResponse.error||termsResponse.error||metricsResponse.error||invoicesResponse.error||membershipsResponse.error||dailyResponse.error||adsDailyResponse.error||prefsResponse.error);
+  const failed=Boolean(clientsResponse.error||termsResponse.error||metricsResponse.error||invoicesResponse.error||membershipsResponse.error||dailyResponse.error||adsDailyResponse.error||prefsResponse.error||agreementMasterResponse.error||agreementDraftsResponse.error);
   const clients=(clientsResponse.data||[]) as Client[];
   const terms=(termsResponse.data||[]) as Terms[];
   const allMetrics=(metricsResponse.data||[]) as Metrics[];
@@ -91,6 +126,8 @@ export default async function AgencyPage({params,searchParams}:{
   const memberships=(membershipsResponse.data||[]) as Membership[];
   const dailySales=(dailyResponse.data||[]) as DailySales[];
   const dailyAds=(adsDailyResponse.data||[]) as DailyAdSpend[];
+  const agreementMaster=agreementMasterResponse.data as MasterAgreement|null;
+  const agreementDrafts=(agreementDraftsResponse.data||[]) as ClientAgreementDraft[];
   const overviewMode:OverviewMode=prefsResponse.data?.overview_mode==="calendar"?"calendar":"contract";
   const configuredCards=Array.isArray(prefsResponse.data?.visible_cards)?prefsResponse.data.visible_cards as string[]:initialCards;
   const visibleCards=overviewOptions.map(x=>x.key).filter(x=>configuredCards.includes(x));
@@ -419,6 +456,51 @@ export default async function AgencyPage({params,searchParams}:{
             })}
             {!filteredClients.length&&<Empty title="No clients" description="Create a client before configuring commission terms."/>}
             <p className="panel-footnote">Contracts, refunds, GST, adjustments and final settlement govern amounts payable. These are provisional estimates, not automatically issued invoices.</p>
+          </Panel>
+        </>}
+        {sectionKey==="agreements"&&<>
+          <div className="agency-legal-warning">
+            <strong>DRAFT — INDEPENDENT LEGAL REVIEW REQUIRED</strong>
+            <p>These are editable proposals only. Nothing on this page sends a SignWell request, grants dashboard access or modifies a signed agreement. All commercial and termination clauses require Australian legal review before use.</p>
+          </div>
+          <Panel eyebrow="MASTER TEMPLATE" title="Marketing Services & Performance Commission Agreement">
+            {agreementMaster?<>
+              <p className="agency-caption">Master version {agreementMaster.version} · last updated {shortDate(agreementMaster.updated_at)}. Editing the master does not overwrite a client's separately saved draft or any future signed agreement.</p>
+              <form action={saveAgencyAgreementMaster} className="agency-agreement-editor">
+                <input type="hidden" name="expected_version" value={agreementMaster.version}/>
+                <label htmlFor="agency-master-agreement"><strong>Master agreement clauses</strong><span>Markdown, including clearly marked placeholders and Schedules A–C</span></label>
+                <textarea id="agency-master-agreement" name="body_markdown" defaultValue={agreementMaster.body_markdown} rows={20} spellCheck/>
+                <button className="login-action agency-save" type="submit">Save master draft →</button>
+              </form>
+              <details className="agency-agreement-preview-toggle"><summary>Preview master agreement</summary><AgreementPreview body={agreementMaster.body_markdown}/></details>
+            </>:<Empty title="Master agreement unavailable" description="Check the agreement-template database and authorisation."/>}
+          </Panel>
+          <Panel eyebrow="CLIENT AGREEMENTS" title={selected?"Customise this client's agreement":"Prepare a client-specific agreement"}>
+            {selected&&agreementMaster?(()=>{
+              const client=clients.find(c=>c.id===selected);
+              const clientTerms=terms.find(t=>t.client_id===selected);
+              const existing=agreementDrafts.find(d=>d.client_id===selected);
+              const body=existing?.body_markdown??agreementMaster.body_markdown;
+              const preview=agreementPreview(body,client,clientTerms);
+              const outstanding=(preview.match(/\[\[[A-Z0-9_]+\]\]/g)||[]).length;
+              return <div className="agency-client-contract">
+                <p className="agency-caption">{client?.name} · {existing?"Private client draft revision "+existing.revision:"Based on master version "+agreementMaster.version}. Commercial values are previewed from the saved commission agreement; unresolved fields remain highlighted.</p>
+                <div className="agency-contract-status">Unresolved placeholder instances: <strong>{outstanding}</strong>. These must be completed and the text legally reviewed before signing.</div>
+                <form action={saveAgencyClientAgreementDraft} className="agency-agreement-editor">
+                  <input type="hidden" name="client_id" value={selected}/>
+                  <input type="hidden" name="expected_revision" value={existing?.revision??0}/>
+                  <input type="hidden" name="source_master_version" value={existing?.source_version??agreementMaster.version}/>
+                  <label htmlFor="agency-client-agreement"><strong>Client-specific draft</strong><span>Customise the clauses, scopes, notice, fee definitions and post-termination terms for this client only.</span></label>
+                  <textarea id="agency-client-agreement" name="body_markdown" defaultValue={body} rows={20} spellCheck/>
+                  <button className="login-action agency-save" type="submit">Save this client's draft →</button>
+                </form>
+                <details className="agency-agreement-preview-toggle"><summary>Preview with contract values</summary><AgreementPreview body={preview}/></details>
+              </div>;
+            })():filteredClients.length?<Table titles={["Client","Draft","Action"]} rows={filteredClients.map(c=>{
+              const draft=agreementDrafts.find(d=>d.client_id===c.id);
+              return [<strong key={c.id}>{c.name}</strong>,draft?"Revision "+draft.revision+" · unsigned":"Not created",<Link key={c.id} className="table-link" href={path("agreements",c.id)}>Edit client draft →</Link>];
+            })}/>:<Empty title="No clients" description="Create a client, then customise its agreement draft."/>}
+            <p className="panel-footnote">A saved client draft is independent of the master. In the future, sending through SignWell must freeze the fully rendered terms, require a verified legally authorised signatory and retain the immutable signed PDF and audit certificate. No signing integration is active here yet.</p>
           </Panel>
         </>}
         {sectionKey==="invoices"&&<>
