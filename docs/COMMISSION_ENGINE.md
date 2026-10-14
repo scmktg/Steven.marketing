@@ -33,7 +33,7 @@ The implementation in `src/lib/commission.ts` uses `Australia/Sydney` dates and 
 ## Data status (14 Oct 2026)
 
 - The daily sales backfill covers 1 July–14 October 2026 (106 days), including no-sale days. All four calendar-month net/gross totals were crosschecked against Shopify; daily shipping and total-sales values were also imported and reconciled.
-- On 14 October the current 17 September–16 October period had 28 days of data, with $19,824.99 net product sales, $906.70 shipping and $20,731.69 Shopify total sales. With a saved $3,495.50 baseline and the marginal 12% tier, that implies a **provisional $2,068.34** commission, pending contract reconciliation.
+- Contract-period total sales, net products and shipping are reconciled to the Shopify daily source in Supabase. Client-specific revenue, baseline and commission figures must **never** be committed to this public source repository; they live only in access-controlled records.
 - The daily dataset is currently **a one-time snapshot**, not a recurring Shopify integration. Dates after the last synced day will be marked incomplete; commissions will **not** silently use stale or calendar-month totals.
 - Calendar-month sales and Google Ads reporting are still calendar-month reports and are labelled separately. Google Ads campaign spend **does not** change the commission calculation unless the signed agreement explicitly provides for it.
 - All daily sales rows are readable only through agency-admin and tenant-member RLS. Authenticated browsers cannot insert, update or delete daily reports. Provider credentials are not stored in this system.
