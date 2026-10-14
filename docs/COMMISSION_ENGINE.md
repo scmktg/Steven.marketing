@@ -52,3 +52,24 @@ The period calculation and configurable reporting-basis display are implemented.
 
 Agency administrators can choose **Contract anniversary periods** or **Calendar month** as their default revenue display and select up to eight KPI cards. The preference is stored under the administrator’s own user ID, with RLS restricting access to that administrator. In the All clients view, the portfolio sums each client’s own current contract period; the table shows exact dates for each client. Missing daily data suppresses the full portfolio financial totals rather than silently reporting a partial sum. Growth and commission remain based on contract periods even when calendar-month reporting is selected, while advertising spend is explicitly labelled as calendar-month data.
 
+
+
+## Agency overview: revenue remaining after specified deductions
+
+The agency overview now provides a selectable KPI **Revenue after commission, ads & shipping**.
+For each client, it calculates over the client's **current contract anniversary period**, regardless of whether the general overview displays contract or calendar month:
+
+```
+Revenue remaining = Shopify total sales
+                  - Shopify shipping charges collected from customers
+                  - provisional agency commission
+                  - Google Ads daily spend for the exact same contract dates
+```
+
+- The measure deliberately uses **Shopify total sales** as the starting point even when a contract uses a different commission revenue basis. Commission is calculated separately according to the signed contract and saved revenue basis.
+- Shipping here is **shipping revenue charged to the customer**, not the amount paid to Australia Post/couriers. We remove it to focus on non-shipping sales. Actual courier expense, product costs, merchant processing fees, other marketing, tax/GST and overheads are not deducted; this is **not profit**.
+- Google Ads source expenditure is read by day in the account's Australia/Sydney timezone and in AUD. Store four decimal places per day and **round only the sum** for the displayed reporting period, to minimise rounding drift.
+- If the dates have incomplete daily Shopify, shipping, commission or Google Ads data, the remaining amount is **unavailable** (dash), never guessed or based on another date window.
+- Portfolio figures sum the individual client's own contract-period result. A client filter shows the selected client's result and a breakdown table explains every deduction.
+- The new KPI and a **Google Ads · contract period** KPI can be shown/hidden with **Customize overview**. An existing calendar-month Ads KPI is retained, with a separate label.
+- The data currently comes from a **one-time administrator-authorized connector snapshot** and must be re-imported securely until a scheduled private worker is installed. No API keys or open ingestion routes were added. Browser clients can only read their own tenant's daily ad spend, never write it.
