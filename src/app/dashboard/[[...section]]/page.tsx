@@ -146,7 +146,7 @@ export default async function Dashboard({ params, searchParams }: {
   const spendSnapshotComplete=hasSpendDays&&spendDays===Number(sydneyToday().slice(8,10));
   const latestSpendDay=dailyAdSpend.map(r=>r.day).sort().at(-1)||null;
   const approvedLimit=advertising?.approved_monthly_limit_aud??null;
-  const remainingBudget=approvedLimit!==null&&spentThisMonth!==null?Math.round((approvedLimit-spentThisMonth)*100)/100:null;
+  const remainingBudget=approvedLimit!==null&&spentThisMonth!==null&&spendSnapshotComplete?Math.round((approvedLimit-spentThisMonth)*100)/100:null;
 
   return <div className="portal-shell">
     <aside className="portal-sidebar">
