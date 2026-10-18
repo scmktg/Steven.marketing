@@ -2,6 +2,9 @@ import "server-only";
 
 const BASE_URL = "https://www.signwell.com/api/v1";
 
+/** Approved SignWell Marketing Partnership Agreement template. Not a credential. */
+export const SIGNWELL_MARKETING_TEMPLATE_ID = "yiguVRdwPMumuucJ";
+
 type SignWellRecipient = {
   id: string;
   placeholder_name: string;
@@ -51,16 +54,18 @@ async function signwellRequest<T>(path: string, options: RequestInit = {}): Prom
 export async function createAgreementFromTemplate(input: {
   templateId: string;
   documentName: string;
-  recipient: SignWellRecipient;
+  recipients: [SignWellRecipient, SignWellRecipient];
   agreementId: string;
   testMode: boolean;
 }): Promise<{ documentId: string; embeddedSigningUrl: string }> {
-  if (!/^[0-9a-f-]{36}$/i.test(input.templateId) ||
+  if (!/^[A-Za-z0-9_-]{8,128}$/.test(input.templateId) ||
       !/^[0-9a-f-]{36}$/i.test(input.agreementId)) {
     throw new Error("Invalid agreement/template identifier");
   }
-  if (!input.recipient.email || !input.recipient.name ||
-      !input.recipient.placeholder_name) throw new Error("Missing signer");
+  if (input.recipients.some((r) => !r.email || !r.name || !r.placeholder_name || !r.id) ||
+      new Set(input.recipients.map((r) => r.placeholder_name)).size !== 2) {
+    throw new Error("Two distinct template signers are required");
+  }
   const result = await signwellRequest<SignWellDocument>("/document_templates/documents", {
     method: "POST",
     body: JSON.stringify({
@@ -71,12 +76,12 @@ export async function createAgreementFromTemplate(input: {
       embedded_signing_notifications: true,
       draft: false,
       allow_reassign: false,
-      recipients: [input.recipient],
+      recipients: input.recipients,
       metadata: { agreement_id: input.agreementId },
     }),
   });
   const recipient = result.recipients?.find(
-    (item) => item.email?.toLowerCase() === input.recipient.email.toLowerCase(),
+    (item) => item.email?.toLowerCase() === input.recipients[1].email.toLowerCase(),
   );
   if (!result.id || !recipient?.embedded_signing_url) {
     throw new Error("SignWell did not return a signing session");
