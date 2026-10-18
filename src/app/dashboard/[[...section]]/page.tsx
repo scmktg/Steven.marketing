@@ -89,6 +89,32 @@ export default async function Dashboard({ params, searchParams }: {
   const client = query.client ? memberships.find(item=>item.slug===query.client) : memberships[0];
   if (query.client && !client) notFound();
 
+  // A membership only establishes organisation identity, NOT activation.
+  // Fail closed if agreement data is missing or its migration is unavailable.
+  // The signing flow must set 'signed' only after provider verification.
+  if (client) {
+    const { data: executedAgreement, error: agreementError } = await supabase
+      .from("client_agreements")
+      .select("id")
+      .eq("client_id", client.id)
+      .eq("status", "signed")
+      .not("signed_at", "is", null)
+      .not("signing_evidence_key", "is", null)
+      .limit(1)
+      .maybeSingle();
+    if (agreementError || !executedAgreement) {
+      return <main className="site">
+        <header className="header"><Link href="/" className="logo">steven.marketing</Link></header>
+        <section className="center"><div className="login-card">
+          <span className="form-kicker">CLIENT ONBOARDING</span>
+          <h1>Your dashboard is being prepared.</h1>
+          <p className="description">Access becomes available after both parties have signed your agreement and signing has been verified. Please contact hello@steven.marketing if you need help.</p>
+          <SignOut />
+        </div></section>
+      </main>;
+    }
+  }
+
   let months: Month[] = [];
   let terms: Terms | null = null;
   let invoices: Invoice[] = [];
