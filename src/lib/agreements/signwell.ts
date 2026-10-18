@@ -115,7 +115,30 @@ export async function fetchSignWellDocument(documentId: string): Promise<SignWel
  * and persist signed PDF + audit evidence transactionally.
  */
 export function isSignWellDocumentCompleted(document: SignWellDocument): boolean {
-  return document.test_mode !== true && (document.completed === true || document.status === "completed") &&
-    Boolean(document.recipients && document.recipients.length >= 2 &&
-    document.recipients.every(recipient => recipient.status === "completed" || recipient.status === "signed"));
+  // SignWell's API may use capitalised status strings.
+  return document.test_mode === false &&
+    (document.completed === true || document.status?.toLowerCase() === "completed");
+}
+
+/**
+ * This validation must run on a fresh GET /documents/{id} response, never on
+ * redirect params, a browser response or the untrusted webhook payload.
+ * Recipient status fields are not always present in SignWell's document
+ * response; a completed document represents all required signers completed.
+ *
+ * Compare the provider's recipients against the agreement's stored, immutable
+ * recipient assignments before a backend is allowed to advance agreement state.
+ */
+export function matchesExpectedSigners(
+  document: SignWellDocument,
+  expected: { agencyEmail: string; clientEmail: string; agencyId: string; clientId: string },
+): boolean {
+  if (!isSignWellDocumentCompleted(document) || document.recipients?.length !== 2) return false;
+  const [agency, client] = [expected.agencyEmail, expected.clientEmail].map(
+    email => email.trim().toLowerCase(),
+  );
+  if (!agency || !client || agency === client) return false;
+  const records = document.recipients;
+  return records.some(r => r.id === expected.agencyId && r.email?.trim().toLowerCase() === agency) &&
+    records.some(r => r.id === expected.clientId && r.email?.trim().toLowerCase() === client);
 }
