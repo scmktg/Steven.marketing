@@ -20,8 +20,11 @@ type SignWellRecipient = {
 type SignWellDocument = {
   id: string;
   status?: string;
+  test_mode?: boolean;
   completed?: boolean;
   recipients?: Array<{
+    status?: string;
+    placeholder_name?: string;
     id?: string;
     email?: string;
     name?: string;
@@ -112,5 +115,7 @@ export async function fetchSignWellDocument(documentId: string): Promise<SignWel
  * and persist signed PDF + audit evidence transactionally.
  */
 export function isSignWellDocumentCompleted(document: SignWellDocument): boolean {
-  return document.completed === true || document.status === "completed";
+  return document.test_mode !== true && (document.completed === true || document.status === "completed") &&
+    Boolean(document.recipients && document.recipients.length >= 2 &&
+    document.recipients.every(recipient => recipient.status === "completed" || recipient.status === "signed"));
 }
