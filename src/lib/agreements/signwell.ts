@@ -5,6 +5,11 @@ const BASE_URL = "https://www.signwell.com/api/v1";
 /** Approved SignWell Marketing Partnership Agreement template. Not a credential. */
 export const SIGNWELL_MARKETING_TEMPLATE_ID = "yiguVRdwPMumuucJ";
 
+export const SIGNWELL_SIGNER_PLACEHOLDERS = {
+  agency: "Document Sender",
+  client: "Client",
+} as const;
+
 type SignWellRecipient = {
   id: string;
   placeholder_name: string;
@@ -63,7 +68,8 @@ export async function createAgreementFromTemplate(input: {
     throw new Error("Invalid agreement/template identifier");
   }
   if (input.recipients.some((r) => !r.email || !r.name || !r.placeholder_name || !r.id) ||
-      new Set(input.recipients.map((r) => r.placeholder_name)).size !== 2) {
+      input.recipients[0].placeholder_name !== SIGNWELL_SIGNER_PLACEHOLDERS.agency ||
+      input.recipients[1].placeholder_name !== SIGNWELL_SIGNER_PLACEHOLDERS.client) {
     throw new Error("Two distinct template signers are required");
   }
   const result = await signwellRequest<SignWellDocument>("/document_templates/documents", {
