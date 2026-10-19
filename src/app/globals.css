@@ -170,13 +170,17 @@
 .invoice-paper-note{border-top:1px solid #eee;padding:18px 0 10px}.invoice-paper-foot{font-size:9px;color:#aaa;letter-spacing:.07em;margin-top:50px;padding-top:15px;border-top:1px solid #eee}
 @media(max-width:1250px){.invoice-workspace{grid-template-columns:1fr}.invoice-preview-wrap{position:static}.invoice-paper{max-width:800px;margin:auto}}
 @media(max-width:600px){.invoice-editor{padding:18px}.invoice-grid{grid-template-columns:1fr}.invoice-item{grid-template-columns:minmax(0,1fr) 64px 90px 24px;gap:6px}.invoice-paper{padding:20px}.invoice-paper-intro{margin:38px 0}.invoice-party-grid{gap:12px}}
+/* Print the invoice as the entire document, not a hidden dashboard spanning pages. */
 @media print{
- @page{size:A4;margin:14mm}
- html,body{background:#fff!important}
- body *{visibility:hidden!important}
- .invoice-preview-wrap,.invoice-preview-wrap *{visibility:visible!important}
- .invoice-preview-wrap{position:absolute!important;inset:0 auto auto 0!important;width:100%!important;background:#fff!important}
- .invoice-preview-heading{display:none!important}
- .invoice-paper{border:0!important;box-shadow:none!important;border-radius:0!important;padding:0!important;min-height:0!important;width:100%!important;max-width:none!important}
- .invoice-paper-table tr,.invoice-paper-note,.invoice-total-block{break-inside:avoid}
+  @page{size:A4;margin:0}
+  html,body{width:100%!important;height:auto!important;min-height:0!important;margin:0!important;padding:0!important;background:#fff!important;overflow:visible!important}
+  .portal-shell,.portal-main,.portal-body,.invoice-workspace{display:block!important;width:100%!important;max-width:none!important;min-width:0!important;min-height:0!important;height:auto!important;margin:0!important;padding:0!important;overflow:visible!important;background:#fff!important}
+  .portal-sidebar,.portal-topbar,.page-heading,.agency-selector,.agency-notification,.dashboard-alert,.invoice-editor,.invoice-preview-heading,.portal-footer,
+  .portal-body>.kpi-grid,.portal-body>.panel{display:none!important}
+  /* The invoice workspace is a direct child of portal-body. Hide all other dashboard sections. */
+  .portal-body>*:not(.invoice-workspace){display:none!important}
+  .invoice-preview-wrap{display:block!important;position:static!important;inset:auto!important;width:100%!important;max-width:none!important;margin:0!important;padding:0!important;overflow:visible!important}
+  .invoice-paper{display:block!important;position:static!important;width:100%!important;max-width:none!important;min-height:0!important;height:auto!important;margin:0!important;padding:14mm!important;border:0!important;border-radius:0!important;box-shadow:none!important;background:#fff!important;color:#111!important;overflow:visible!important;box-sizing:border-box!important}
+  .invoice-paper-table{page-break-inside:auto}
+  .invoice-paper-table tr,.invoice-paper-note,.invoice-total-block{break-inside:avoid;page-break-inside:avoid}
 }
