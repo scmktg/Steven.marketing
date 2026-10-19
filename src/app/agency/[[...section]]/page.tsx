@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { SignOut } from "@/components/sign-out";
+import { InvoiceBuilder } from "@/components/invoice-builder";
 import { requireAgencyAdmin } from "@/lib/agency-auth";
 import { contractHistory, sydneyToday, adSpendForPeriod, revenueAfterDeductions, type AgreementTerms, type DailySales, type DailyAdSpend } from "@/lib/commission";
 import { createAgencyClient, saveAgencyTerms, assignClientMember, removeClientMember, addAgencyInvoice, saveAgencyOverviewPreferences, saveAgencyAgreementMaster, saveAgencyClientAgreementDraft } from "../actions";
@@ -732,6 +733,7 @@ export default async function AgencyPage({params,searchParams}:{
           </Panel>
         </>}
         {sectionKey==="invoices"&&<>
+          <InvoiceBuilder clients={clients} selectedClient={selected}/>
           <div className="kpi-grid three"><Stat featured label="Unpaid invoice value" value={aud(relevantInvoices.filter(i=>["issued","overdue"].includes(i.status)).reduce((n,i)=>n+Number(i.amount_aud),0))}/><Stat label="Issued invoices" value={whole(relevantInvoices.length)}/><Stat label="Paid invoices" value={whole(relevantInvoices.filter(i=>i.status==="paid").length)}/></div>
           <Panel eyebrow="BILLING" title="Client invoices">
             {relevantInvoices.length?<Table titles={["Client","Invoice","Issued","Due","Amount","Status","Link"]} rows={relevantInvoices.map(i=>[lookup(i.client_id),i.number,shortDate(i.issued_on),shortDate(i.due_on),aud(i.amount_aud),i.status,i.hosted_invoice_url?.startsWith("https://")?<a href={i.hosted_invoice_url} key={i.id} target="_blank" rel="noopener noreferrer" className="table-link">Open ↗</a>:"—"])}/>:<Empty title="No invoices recorded" description="Invoices will show here after you add them."/>}
