@@ -184,3 +184,27 @@
   .invoice-paper-table{page-break-inside:auto}
   .invoice-paper-table tr,.invoice-paper-note,.invoice-total-block{break-inside:avoid;page-break-inside:avoid}
 }
+
+/* Invoice document text contrast, including browser PDF output. */
+.invoice-paper .invoice-paper-head>span,
+.invoice-paper .invoice-paper-kicker,
+.invoice-paper .invoice-paper-table th,
+.invoice-paper .invoice-dates p span,
+.invoice-paper .invoice-paper-foot{color:#555}
+.invoice-paper .invoice-party-grid p,
+.invoice-paper .invoice-paper-note p,
+.invoice-paper .invoice-paper-intro p,
+.invoice-paper .invoice-total-block>div span{color:#4b4b4b}
+.invoice-paper .invoice-paper-intro h2 span{color:#555}
+@media print{
+ .invoice-paper,.invoice-paper *{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+ .invoice-paper .invoice-paper-head>span,
+ .invoice-paper .invoice-paper-kicker,
+ .invoice-paper .invoice-paper-table th,
+ .invoice-paper .invoice-dates p span,
+ .invoice-paper .invoice-paper-foot{color:#4b4b4b!important}
+ .invoice-paper .invoice-party-grid p,
+ .invoice-paper .invoice-paper-note p,
+ .invoice-paper .invoice-paper-intro p,
+ .invoice-paper .invoice-total-block>div span{color:#3f3f3f!important}
+}
