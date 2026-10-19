@@ -6,7 +6,8 @@ type Client = {id:string;name:string};
 type Line = {id:number;description:string;quantity:string;rate:string};
 const money=(value:number)=>new Intl.NumberFormat("en-AU",{style:"currency",currency:"AUD"}).format(value);
 const today=()=>new Date().toLocaleDateString("en-CA",{timeZone:"Australia/Melbourne"});
-const validNumber=(v:string)=>{const n=Number(v);return Number.isFinite(n)&&n>=0?n:0};
+const validNumber=(v:string)=>{const n=Number(v);return Number.isFinite(n)?n:0};
+const quantity=(v:string)=>Math.max(0,validNumber(v));
 const freshLine=():Line=>({id:Date.now()+Math.random(),description:"",quantity:"1",rate:"0"});
 const displayDate=(s:string)=>s?new Date(s+"T12:00:00Z").toLocaleDateString("en-AU",{day:"numeric",month:"short",year:"numeric",timeZone:"UTC"}):"—";
 
@@ -27,11 +28,11 @@ export function InvoiceBuilder({clients,selectedClient}:{clients:Client[];select
   const [paymentDetails,setPaymentDetails]=useState("");
   const selectedName=clients.find(c=>c.id===client)?.name||"";
   const recipientName=recipient.trim()||selectedName;
-  const subtotal=useMemo(()=>Math.round(lines.reduce((sum,row)=>sum+validNumber(row.quantity)*validNumber(row.rate),0)*100)/100,[lines]);
-  const tax=Math.round(subtotal*(gst?0.1:0)*100)/100;
+  const subtotal=useMemo(()=>Math.round(lines.reduce((sum,row)=>sum+quantity(row.quantity)*validNumber(row.rate),0)*100)/100,[lines]);
+  const tax=Math.round(Math.max(0,subtotal)*(gst?0.1:0)*100)/100;
   const total=subtotal+tax;
   const update=(id:number,field:keyof Line,value:string)=>setLines(rows=>rows.map(row=>row.id===id?{...row,[field]:value}:row));
-  const canPrint=Boolean(recipientName.trim()&&number.trim()&&issued&&lines.some(l=>l.description.trim()&&validNumber(l.quantity)>0)&&subtotal>0);
+  const canPrint=Boolean(recipientName.trim()&&number.trim()&&issued&&lines.some(l=>l.description.trim()&&quantity(l.quantity)>0)&&subtotal>=0&&lines.every(l=>quantity(l.quantity)<=1000000&&Math.abs(validNumber(l.rate))<=1000000000));
   return <div className="invoice-workspace">
     <section className="invoice-editor panel">
       <div className="panel-heading"><div><span className="panel-kicker">CREATE / INVOICE</span><h2>New invoice</h2></div><span className="invoice-pill">Draft · not saved</span></div>
@@ -54,11 +55,11 @@ export function InvoiceBuilder({clients,selectedClient}:{clients:Client[];select
         {lines.map((row,index)=><div className="invoice-item" key={row.id}>
           <label className="agency-field invoice-desc"><span>{index===0?"Description":"Service"}</span><input value={row.description} maxLength={250} onChange={e=>update(row.id,"description",e.target.value)} placeholder="Service or deliverable"/></label>
           <label className="agency-field"><span>Qty</span><input type="number" min="0" max="1000000" step=".01" value={row.quantity} onChange={e=>update(row.id,"quantity",e.target.value)}/></label>
-          <label className="agency-field"><span>Rate (AUD)</span><input type="number" min="0" max="1000000000" step=".01" value={row.rate} onChange={e=>update(row.id,"rate",e.target.value)}/></label>
+          <label className="agency-field"><span>Rate (AUD)</span><input type="number" min="-1000000000" max="1000000000" step=".01" value={row.rate} onChange={e=>update(row.id,"rate",e.target.value)}/></label>
           <button type="button" className="invoice-remove" aria-label={"Remove service "+(index+1)} disabled={lines.length===1} onClick={()=>setLines(rows=>rows.filter(l=>l.id!==row.id))}>×</button>
         </div>)}
       </div>
-      <button type="button" className="invoice-add" onClick={()=>setLines(rows=>[...rows,freshLine()])}>＋ Add line item</button>
+      <button type="button" className="invoice-add" onClick={()=>setLines(rows=>[...rows,freshLine()])}>＋ Add line item</button><p className="agency-caption">For a discount, add a line item with a description and a negative rate (e.g. −100.00).</p>
       <label className="invoice-tax-switch"><input type="checkbox" checked={gst} onChange={e=>setGst(e.target.checked)}/><span>Apply 10% GST</span><small>Only enable if registered for GST; enter prices excluding GST.</small></label>
       <div className="invoice-section-label">04 / SENDER & PAYMENT DETAILS</div>
       <div className="invoice-grid">
@@ -76,7 +77,7 @@ export function InvoiceBuilder({clients,selectedClient}:{clients:Client[];select
         <header className="invoice-paper-head"><strong>{businessName||"Your business"}</strong><span>{gst?"TAX INVOICE":"INVOICE"}</span></header>
         <div className="invoice-paper-intro"><div><h2>Invoice<span>.</span></h2><p>{number||"—"}</p></div><div className="invoice-dates"><p><span>Issued</span><strong>{displayDate(issued)}</strong></p><p><span>Due</span><strong>{displayDate(due)}</strong></p></div></div>
         <div className="invoice-party-grid"><div><span className="invoice-paper-kicker">BILL TO</span><strong>{recipientName||"Client name"}</strong>{recipientEmail&&<p>{recipientEmail}</p>}{recipientAddress&&<p className="invoice-multiline">{recipientAddress}</p>}</div><div><span className="invoice-paper-kicker">FROM</span><strong>{businessName||"Your business"}</strong>{abn&&<p>ABN {abn}</p>}{businessAddress&&<p className="invoice-multiline">{businessAddress}</p>}</div></div>
-        <table className="invoice-paper-table"><thead><tr><th>DESCRIPTION</th><th>QTY</th><th>RATE</th><th>AMOUNT</th></tr></thead><tbody>{lines.map(l=><tr key={l.id}><td>{l.description||"Service description"}</td><td>{l.quantity||"0"}</td><td>{money(validNumber(l.rate))}</td><td>{money(validNumber(l.quantity)*validNumber(l.rate))}</td></tr>)}</tbody></table>
+        <table className="invoice-paper-table"><thead><tr><th>DESCRIPTION</th><th>QTY</th><th>RATE</th><th>AMOUNT</th></tr></thead><tbody>{lines.map(l=><tr key={l.id}><td>{l.description||"Service description"}</td><td>{l.quantity||"0"}</td><td>{money(validNumber(l.rate))}</td><td>{money(quantity(l.quantity)*validNumber(l.rate))}</td></tr>)}</tbody></table>
         <div className="invoice-total-block"><div><span>Subtotal</span><strong>{money(subtotal)}</strong></div><div><span>GST {gst?"(10%)":"(not charged)"}</span><strong>{money(tax)}</strong></div><div className="invoice-grand-total"><span>Total due</span><strong>{money(total)}</strong></div></div>
         {paymentDetails&&<div className="invoice-paper-note"><span className="invoice-paper-kicker">PAYMENT DETAILS</span><p className="invoice-multiline">{paymentDetails}</p></div>}
         {notes&&<div className="invoice-paper-note"><span className="invoice-paper-kicker">NOTES</span><p className="invoice-multiline">{notes}</p></div>}
